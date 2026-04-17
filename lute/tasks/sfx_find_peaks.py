@@ -689,7 +689,7 @@ class FindPeaksPyAlgos(Task):
 
                 if self._task_parameters.psana_mask:
                     mask = det.mask(
-                        self._task_parameters.lute_config.run,
+                        int(self._task_parameters.lute_config.run),
                         calib=False,
                         status=True,
                         edges=False,

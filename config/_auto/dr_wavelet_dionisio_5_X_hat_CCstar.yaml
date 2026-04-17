@@ -1,0 +1,43 @@
+%YAML 1.3
+---
+title: "SFX: Pipeline for Dr + PeakFinding"
+experiment: "mfxx49820"
+run: "0"
+run_pad: "0000"
+date: "2025/10/15"
+lute_version: 0.1
+task_timeout: 259200
+dr_method: "wavelet_dionisio_5"
+dr_component: "X_hat"
+work_dir: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/Wavelet/wavelet_dionisio_5/X_hat/"
+...
+
+---
+detector: "epix10k2M"
+out_root: "{{ work_dir }}"
+pv_camera_length: "MFX:ROB:CONT:POS:Z"
+geom_file: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/geom/r0016.geom"
+
+ConcatenateStreamFiles:
+  in_file: "{{ out_root }}"     
+  tag: "stream_" 
+  out_file: "{{ work_dir }}/concatenated.stream"
+
+MergePartialator:
+  executable: "/sdf/group/lcls/ds/tools/crystfel/0.10.2/bin/partialator"
+  in_file: "{{ work_dir }}/concatenated.stream"
+  out_file: "{{ work_dir }}/merged.hkl"
+  symmetry: "4/mmm_uac"
+  highres: 2.5
+  nshells: 10
+  model: "unity"
+  niter: 1
+
+CompareHKL:
+  in_files: "{{ work_dir }}/merged.hkl1 {{ work_dir }}/merged.hkl2"
+  fom: "CCstar"
+  cell_file: "/sdf/data/lcls/ds/mfx/mfxx49820/results/btx_pypca/cell/reference.cell"
+  symmetry: "4/mmm_uac"
+  shell_file: "{{ work_dir }}/CCstar.txt"
+
+...

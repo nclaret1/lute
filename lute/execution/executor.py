@@ -988,7 +988,7 @@ class Executor(BaseExecutor):
             elog_data: Dict[str, str] = {
                 f"{executor._analysis_desc.task_result.task_name} status": "RUNNING",
             }
-            post_elog_run_status(elog_data)
+            #post_elog_run_status(elog_data)
             return None
 
         self.add_hook("task_started", task_started)
@@ -1001,7 +1001,7 @@ class Executor(BaseExecutor):
             elog_data: Dict[str, str] = {
                 f"{executor._analysis_desc.task_result.task_name} status": "FAILED",
             }
-            post_elog_run_status(elog_data)
+            #post_elog_run_status(elog_data)
             return None
 
         self.add_hook("task_failed", task_failed)
@@ -1014,7 +1014,7 @@ class Executor(BaseExecutor):
             elog_data: Dict[str, str] = {
                 f"{executor._analysis_desc.task_result.task_name} status": "STOPPED",
             }
-            post_elog_run_status(elog_data)
+            #post_elog_run_status(elog_data)
             return None
 
         self.add_hook("task_stopped", task_stopped)
@@ -1027,7 +1027,7 @@ class Executor(BaseExecutor):
             elog_data: Dict[str, str] = {
                 f"{executor._analysis_desc.task_result.task_name} status": "COMPLETED",
             }
-            post_elog_run_status(elog_data)
+            #post_elog_run_status(elog_data)
             return None
 
         self.add_hook("task_done", task_done)
@@ -1040,7 +1040,7 @@ class Executor(BaseExecutor):
             elog_data: Dict[str, str] = {
                 f"{executor._analysis_desc.task_result.task_name} status": "CANCELLED",
             }
-            post_elog_run_status(elog_data)
+            #post_elog_run_status(elog_data)
             return None
 
         self.add_hook("task_cancelled", task_cancelled)
@@ -1067,7 +1067,7 @@ class Executor(BaseExecutor):
             elog_data: Dict[str, str] = {
                 f"{executor._analysis_desc.task_result.task_name} status": "COMPLETED",
             }
-            post_elog_run_status(elog_data)
+            #post_elog_run_status(elog_data)
 
             return True
 
@@ -1258,7 +1258,7 @@ class Executor(BaseExecutor):
             post_elog_run_table(exp, run, params)
         except Exception as err:
             logger.error(f"Unable to post run parameters! Error: {err}")
-        post_elog_run_status(params)
+        #post_elog_run_status(params)
         summary_str: str = ";".join(f"{key}: {value}" for key, value in params.items())
         return summary_str
 

@@ -100,5 +100,14 @@ def import_task(task_name: str) -> Type[Task]:
         from .xtc import ConvertXtc1to2
 
         return ConvertXtc1to2
+    
+    if task_name == "ComparePeakFindingPrecision":
+        from .precision import ComparePeakFindingPrecision
 
+        return ComparePeakFindingPrecision
+    
+    if task_name == "DrFindPeaksPyAlgos":
+        from .sfx_dr_find_peaks import DrFindPeaksPyAlgos
+
+        return DrFindPeaksPyAlgos
     raise TaskNotFoundError

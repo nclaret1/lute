@@ -118,7 +118,6 @@ LOG_FILE="${TASK}_${EXPERIMENT:-$EXP}_r${FORMAT_RUN}_$(date +'%Y-%m-%d_%H-%M-%S'
 SLURM_ARGS+=" --output=${LOG_FILE}_%J.out"
 SLURM_ARGS+=" --error=${LOG_FILE}_%J.out"
 
-# If LUTE_USE_TCP is unset use TCP
 if [[ -z ${LUTE_USE_TCP} || ${LUTE_USE_TCP} != 0 ]]; then
     echo "Using TCP"
     export LUTE_USE_TCP=1
@@ -128,7 +127,6 @@ else
     export LUTE_SOCKET="/tmp/lute_${RANDOM}.sock"
 fi
 
-# By default source the psana environment since most Tasks will use it.
 if [[ ${USE_PSANA2} ]]; then
     echo "Using a Psana2 base environment."
     source /sdf/group/lcls/ds/ana/sw/conda2/manage/bin/psconda.sh

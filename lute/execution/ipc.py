@@ -214,7 +214,11 @@ class PipeCommunicator(Communicator):
             proc.stdout.read() if proc.stdout is not None else None
         )
         if raw_signal is not None:
-            signal = raw_signal.decode()
+            try:
+                signal = raw_signal.decode()
+            except UnicodeDecodeError:
+                logger.error("PipeCommunicator unable to decode signal.")
+                signal = None
         else:
             signal = raw_signal
         if raw_contents:

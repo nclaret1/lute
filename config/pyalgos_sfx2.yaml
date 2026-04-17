@@ -1,0 +1,98 @@
+%YAML 1.3
+---
+# ========= HEADER (global) =========
+title: "SFX: PyAlgos → Index → Partialator Configuration"
+experiment: "mfxx49820"                 
+run: 16
+#experiment: "{{ $EXPERIMENT }}"
+#run: "{{ $RUN_NUM }}"
+date: "2025/10/15"
+lute_version: 0.1
+task_timeout: 14400   
+#work_dir: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/PeakFinderPyAlgos"
+#work_dir: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/PeakFindingComparer"
+#work_dir: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/CrystFELIndexer"
+work_dir: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/DrPeakFinderPyAlgos"
+                  
+...
+---
+# ========= PER-TASK PARAMS =========
+detector: "epix10k2M"                  
+out_root:  "{{ work_dir }}"
+pv_camera_length: "MFX:ROB:CONT:POS:Z"         
+event_receiver: "evr0"    
+#geom_file: "/sdf/data/lcls/ds/mfx/mfxx49820/results/btx_pypca/geom/r0016.geom"  
+geom_file: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/geom/r0016.geom"      
+
+
+
+FindPeaksPyAlgos:
+  outdir: "{{ out_root }}/r{{ run:04d }}"  
+  det_name: "{{ detector }}"                      
+  event_receiver: "{{ event_receiver }}"          
+  pv_camera_length: "{{ pv_camera_length }}"      
+
+  n_events: 0             
+  psana_mask: true
+  min_peaks: 10
+  max_peaks: 2048
+
+DrFindPeaksPyAlgos:
+  outdir: "{{ out_root }}/r{{ run:04d }}"  
+  det_name: "{{ detector }}"                      
+  event_receiver: "{{ event_receiver }}"          
+  pv_camera_length: "{{ pv_camera_length }}"      
+
+  n_events: 0             
+  psana_mask: true
+  min_peaks: 10
+  max_peaks: 2048
+  n_components: 100
+  tol: 1e-7
+  max_iter: 500
+
+
+
+#IndexCrystFEL_f32:
+IndexCrystFEL:
+  #in_file: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/PeakFinderPyAlgos/r0016/mfxx49820_16_.list"
+  in_file: "{{ DrFindPeaksPyAlgos.outdir }}/{{ experiment }}_16_.list"
+  executable: "/sdf/group/lcls/ds/tools/crystfel/0.10.2/bin/indexamajig"
+  out_file: "{{ DrFindPeaksPyAlgos.outdir }}/stream_{{ DrFindPeaksPyAlgos.dr_method }}.stream"
+  geometry: "{{ geom_file }}"
+  indexing: "mosflm"
+  int_radius: "3,4,6"
+  peaks: "cxi"
+  min_peaks: 15
+  tolerance: "5,5,5,1.5"
+  cell_file: "/sdf/data/lcls/ds/mfx/mfxx49820/results/btx_pypca/cell/reference.cell"
+
+ConcatenateStreamFiles:
+  out_file: "{{ out_root }}/concatenated.stream"
+
+MergePartialator:
+  executable: "/sdf/group/lcls/ds/tools/crystfel/0.10.2/bin/partialator"
+  in_file: "{{ work_dir }}/concatenated.stream"
+  out_file: "{{ work_dir }}/merged.hkl"
+  symmetry: "4/mmm_uac"  
+
+
+CompareHKL:
+  in_files: "{{ work_dir }}/merged.hkl1 {{ work_dir }}/merged.hkl2" 
+  #in_files: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/PartialatorMerger/r0016/merge/merged.hkl1 /sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/PartialatorMerger/r0016/merge/merged.hkl2"
+  fom: "Rsplit"
+  #nshells: 10
+  cell_file: "/sdf/data/lcls/ds/mfx/mfxx49820/results/btx_pypca/cell/reference.cell"
+  symmetry: "4/mmm_uac"
+  #shell_file: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/HKLComparer/r0016/Rsplit.txt"
+  shell_file: "{{ work_dir }}/Rsplit.txt"
+
+Test:
+  float_var: 0.01
+  str_var: "test"
+  compound_var:
+    int_var: 10
+    dict_var: {"a": "b"}
+  throw_error: False      
+
+...
