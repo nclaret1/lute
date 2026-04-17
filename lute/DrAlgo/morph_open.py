@@ -5,13 +5,21 @@ import numpy as np, numpy.typing as npt
 from scipy.ndimage import grey_opening
 from .DrAlgo import LSDrAlgo, Factors, _check_2d
 
+
 class MorphOpenAlgo(LSDrAlgo):
     """
     L = grey_opening(X, size=footprint)  (background)
     S = X - L                             (peaks / small bright structures)
     """
-    def __init__(self, *, size: int = 7, center: bool = True, copy_: bool = True,
-                 verbose: bool = True):
+
+    def __init__(
+        self,
+        *,
+        size: int = 7,
+        center: bool = True,
+        copy_: bool = True,
+        verbose: bool = True,
+    ):
         super().__init__(n_components=None, center=center, copy_=copy_, verbose=verbose)
         if size < 1 or size % 2 == 0:
             raise ValueError("`size` should be a positive odd integer.")
@@ -21,12 +29,12 @@ class MorphOpenAlgo(LSDrAlgo):
         Xc = _check_2d(Xc)
         L = grey_opening(Xc, size=(self.size, self.size)).astype(Xc.dtype)
         S = Xc - L
-        self.low_rank_  = L
-        self.sparse_    = S
-        self.factors_   = Factors(L=L, S=S)
-        self.errors_    = [0.0]
+        self.low_rank_ = L
+        self.sparse_ = S
+        self.factors_ = Factors(L=L, S=S)
+        self.errors_ = [0.0]
         self.final_error_ = 0.0
-        self.timers_    = []
+        self.timers_ = []
 
     def get_params(self, deep: bool = True):
         p = super().get_params(deep)
@@ -39,4 +47,4 @@ class MorphOpenAlgo(LSDrAlgo):
             if size < 1 or size % 2 == 0:
                 raise ValueError("`size` should be a positive odd integer.")
             self.size = size
-        return super().set_params(**{k:v for k,v in params.items() if k!="size"})
+        return super().set_params(**{k: v for k, v in params.items() if k != "size"})

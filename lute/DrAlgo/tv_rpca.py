@@ -9,6 +9,7 @@ from .rpca_altproj import RPCAAltProj
 
 try:
     from skimage.restoration import denoise_tv_chambolle
+
     _HAVE_SKIMAGE = True
 except Exception:
     _HAVE_SKIMAGE = False
@@ -89,6 +90,5 @@ class TVRPCAAltProj(RPCAAltProj):
         self.tv_weights_ = np.array([w], dtype=float)
 
         super()._fit_core(X_tv, y=y)
-
 
         return self

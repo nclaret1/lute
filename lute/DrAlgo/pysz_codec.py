@@ -10,6 +10,7 @@ from .DrAlgo import XhatDrAlgo, Factors, NotFittedError, _check_2d
 
 AlgoName = Literal["INTERP_LORENZO", "INTERP", "LORENZO_REG", "LOSSLESS"]
 
+
 class PySZCodecAlgo(XhatDrAlgo):
     def __init__(
         self,
@@ -57,13 +58,14 @@ class PySZCodecAlgo(XhatDrAlgo):
         Xhat = sz.decompress(cbuf, cfg).astype(dtype, copy=False)
         self.Resid_ = Xhat - Xc
 
-
         orig_bytes = Xc.size * Xc.itemsize
         comp_bytes = int(len(cbuf)) if hasattr(cbuf, "__len__") else int(cbuf.nbytes)
         self.X_hat_ = Xhat
         self._Xc_ = Xc
         self.compressed_bytes_ = comp_bytes
-        self.compression_ratio_ = (orig_bytes / comp_bytes) if comp_bytes > 0 else np.inf
+        self.compression_ratio_ = (
+            (orig_bytes / comp_bytes) if comp_bytes > 0 else np.inf
+        )
 
         self.max_abs_err_ = float(np.max(np.abs(self.Resid_))) if Xc.size else 0.0
         denom = float(np.linalg.norm(Xc, ord="fro")) or 1.0
@@ -71,10 +73,7 @@ class PySZCodecAlgo(XhatDrAlgo):
         self.errors_ = [float(np.linalg.norm(self.Resid_, ord="fro") / denom)]
         self.final_error_ = self.errors_[-1]
         self.timers_ = []
-        self.factors_ = Factors(
-            Xhat=self.X_hat_,
-            Resid=self.Resid_
-        )
+        self.factors_ = Factors(Xhat=self.X_hat_, Resid=self.Resid_)
 
     def factors(self) -> Factors:
         if self.X_hat_ is None:
@@ -97,6 +96,7 @@ class PySZCodecAlgo(XhatDrAlgo):
             _ = _algo_string_to_enum(val)
             self.sz_algo = val
         return super().set_params(**params)
+
 
 def _algo_string_to_enum(name: str):
     name = name.upper()

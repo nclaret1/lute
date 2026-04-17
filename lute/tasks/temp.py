@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Literal, TextIO, Tuple, Optional, cast, Union
 import os
 
-import h5py 
+import h5py
 import numpy
 import panel as pn
 from mpi4py.MPI import COMM_WORLD, SUM
@@ -22,7 +22,6 @@ from numpy.typing import NDArray
 from psalgos.pypsalgos import PyAlgos  # type: ignore
 from psana import Detector, EventId, MPIDataSource  # type: ignore
 from PSCalib import GeometryAccess  # type: ignore
-
 
 ####
 import numpy as np
@@ -35,7 +34,12 @@ from lute.execution.ipc import Message
 from lute.io.models.sfx_dr_find_peaks import DrFindPeaksPyAlgosParameters
 from lute.tasks.task import Task
 from lute.tasks.dataclasses import TaskStatus, ElogSummaryPlots
-from lute.tasks.sfx_find_peaks import CxiWriter, write_master_file, generate_libpressio_configuration, add_peaks_to_libpressio_configuration
+from lute.tasks.sfx_find_peaks import (
+    CxiWriter,
+    write_master_file,
+    generate_libpressio_configuration,
+    add_peaks_to_libpressio_configuration,
+)
 
 from lute.DrAlgo import import_dr_algo
 
@@ -47,16 +51,15 @@ class DrFindPeaksPyAlgos(Task):
     """
 
     def __init__(
-        self, *, 
-        params: DrFindPeaksPyAlgosParameters, 
-        use_mpi: bool = True
+        self, *, params: DrFindPeaksPyAlgosParameters, use_mpi: bool = True
     ) -> None:
         super().__init__(params=params, use_mpi=use_mpi)
-    
 
     def _run(self) -> None:
-        self._task_parameters = cast(DrFindPeaksPyAlgosParameters, self._task_parameters)
-        ENABLE_ELOG: bool = False#os.getenv("LUTE_ENABLE_ELOG", "0") == "1"
+        self._task_parameters = cast(
+            DrFindPeaksPyAlgosParameters, self._task_parameters
+        )
+        ENABLE_ELOG: bool = False  # os.getenv("LUTE_ENABLE_ELOG", "0") == "1"
         ds: Any = MPIDataSource(
             f"exp={self._task_parameters.lute_config.experiment}:"
             f"run={self._task_parameters.lute_config.run}:smd"
@@ -89,8 +92,6 @@ class DrFindPeaksPyAlgos(Task):
         if (tag != "") and (tag[0] != "_"):
             tag = "_" + tag
 
-        
-
         ##############
         rank_fracs = np.arange(0.01, 0.1001, 0.01)
         total_events_target: int = 2
@@ -101,7 +102,7 @@ class DrFindPeaksPyAlgos(Task):
         evt: Any
         for evt in ds.events():
             ########
-            
+
             num_events += 1
             print("adding one event")
 
@@ -123,7 +124,7 @@ class DrFindPeaksPyAlgos(Task):
 
             print(f"event {num_events}: save_this_event={save_this_event}")
 
-    ######################
+            ######################
 
             evt_id: Any = evt.get(EventId)
             timestamp_seconds: int = evt_id.time()[0]
@@ -141,17 +142,17 @@ class DrFindPeaksPyAlgos(Task):
             if self._task_parameters.event_logic:
                 if self._task_parameters.event_code not in event_codes:
                     continue
-            
+
             img: Any = det.calib(evt)
 
-            #if img is not None:
-                #img = np.asarray(img, dtype=numpy.float16)
-                #img = img.astype(numpy.float32, copy=False)
+            # if img is not None:
+            # img = np.asarray(img, dtype=numpy.float16)
+            # img = img.astype(numpy.float32, copy=False)
 
             if img is None:
                 num_empty_images += 1
                 continue
-            dr_method : Any = None
+            dr_method: Any = None
             if self._task_parameters.dr_method:
                 AlgoClass = import_dr_algo(self._task_parameters.dr_method)
                 dr_algo = AlgoClass()
@@ -161,7 +162,7 @@ class DrFindPeaksPyAlgos(Task):
                     gamma=self._task_parameters.gamma,
                     max_iter=self._task_parameters.max_iter,
                     size=self._task_parameters.size,
-                    dr_component=self._task_parameters.dr_component
+                    dr_component=self._task_parameters.dr_component,
                 )
             if alg is None:
                 det_shape: Tuple[int, ...] = img.shape
@@ -180,16 +181,15 @@ class DrFindPeaksPyAlgos(Task):
                         edges=True,
                         central=True,
                         unbond=True,
-                        unbondnbrs=False
+                        unbondnbrs=False,
                     ).astype(numpy.uint16)
-                    
 
-            #set target rank
+            # set target rank
             #####
             for r_frac in rank_fracs:
                 P, H, W = img.shape
                 desired = int(max(1, round(r_frac * min(H, W))))
-                k = min(desired, min(H, W) - 1)  
+                k = min(desired, min(H, W) - 1)
                 self._task_parameters.n_components = k
 
                 recon_img_full: Any = numpy.zeros(img.shape)
@@ -201,9 +201,7 @@ class DrFindPeaksPyAlgos(Task):
                 print(f"target rank fraction r={r_frac:.2f}, k={k}")
                 print(f"[Event {evt_id}] P={P}, H={H}, W={W}")
 
-
                 #######
-
 
                 reconstructed_img: Any = numpy.zeros(img.shape)
                 comp = self._task_parameters.dr_component
@@ -211,18 +209,18 @@ class DrFindPeaksPyAlgos(Task):
                 P, H, W = img.shape
 
                 for p in range(P):
-                    try: 
+                    try:
                         ####
-                            
+
                         img[p, :, :]
-                        '''
+                        """
                         dr_algo.fit(img[p, :, :])
 
                         if comp == "S":
                             reconstructed_img[p] = dr_algo.sparse_
                         elif comp == "L+S":
                             reconstructed_img[p] = dr_algo.reconstruct()
-                        '''
+                        """
 
                         #########
                         if mask.ndim == 3:
@@ -230,9 +228,9 @@ class DrFindPeaksPyAlgos(Task):
                         else:
                             panel_mask = mask
 
-                        panel_mask_bool = (panel_mask == 1)
+                        panel_mask_bool = panel_mask == 1
 
-                        panel_mask_bool = (panel_mask == 1)
+                        panel_mask_bool = panel_mask == 1
 
                         # original panel (keep full frame)
                         orig_img = img[p, :, :].astype(np.float32, copy=False)
@@ -247,7 +245,9 @@ class DrFindPeaksPyAlgos(Task):
 
                         # if nothing or too little is good, skip DR on this panel
                         if row_idx.size < 2 or col_idx.size < 2:
-                            print(f"[Frame {p}] Skipping DR: not enough unmasked rows/cols")
+                            print(
+                                f"[Frame {p}] Skipping DR: not enough unmasked rows/cols"
+                            )
                             orig_img_full[p] = orig_img
                             recon_img_full[p] = orig_img
                             S_img_full[p] = np.zeros_like(orig_img)
@@ -263,17 +263,21 @@ class DrFindPeaksPyAlgos(Task):
 
                         for beta in betas:
 
-                            beta_tag = f"b{beta:.3g}".replace(".", "p").replace("-", "m")
+                            beta_tag = f"b{beta:.3g}".replace(".", "p").replace(
+                                "-", "m"
+                            )
                             save_dir = os.path.join(base_dir, f"beta_{beta_tag}")
                             os.makedirs(save_dir, exist_ok=True)
 
-                            #adding this to save raw frames
+                            # adding this to save raw frames
                             save_orig_img_path = os.path.join(
-                                    save_dir, f"orig_frame_{p}_{evt_id}.npy"
-                                )
+                                save_dir, f"orig_frame_{p}_{evt_id}.npy"
+                            )
 
                             if self._task_parameters.dr_method:
-                                AlgoClass = import_dr_algo(self._task_parameters.dr_method)
+                                AlgoClass = import_dr_algo(
+                                    self._task_parameters.dr_method
+                                )
                                 dr_algo = AlgoClass()
 
                                 # effective rank must satisfy 0 < k < min(comp_img.shape)
@@ -298,8 +302,6 @@ class DrFindPeaksPyAlgos(Task):
                             S_comp = dr_algo.sparse_
                             L_comp = dr_algo.low_rank_
 
-
-
                             # --- build back full-size images ---
                             if RECON_FULL_IMAGE:
                                 # Keep original values in masked region
@@ -322,9 +324,8 @@ class DrFindPeaksPyAlgos(Task):
 
                             # store per-frame outputs
                             recon_img_full[p] = recon_full
-                            S_img_full[p]     = S_full
-                            L_img             = L_full  # for stats/saving below
-
+                            S_img_full[p] = S_full
+                            L_img = L_full  # for stats/saving below
 
                             U = dr_algo.U_
                             V = dr_algo.V_
@@ -361,8 +362,12 @@ class DrFindPeaksPyAlgos(Task):
                                     "nnz": nnz,
                                     "value_bytes": int(val_bytes),
                                     "index_bytes_estimate": int(index_bytes),
-                                    "total_sparse_bytes_estimate": int(val_bytes + index_bytes),
-                                    "density": float(nnz / S_full.size) if S_full.size else 0.0,
+                                    "total_sparse_bytes_estimate": int(
+                                        val_bytes + index_bytes
+                                    ),
+                                    "density": (
+                                        float(nnz / S_full.size) if S_full.size else 0.0
+                                    ),
                                 }
                                 save_S_stats_path = os.path.join(
                                     save_dir, f"S_stats_{p}_{evt_id}.json"
@@ -370,10 +375,13 @@ class DrFindPeaksPyAlgos(Task):
                                 with open(save_S_stats_path, "w") as fh:
                                     json.dump(sparse_stats, fh, indent=2)
 
-
                             if L_img is not None:
                                 lr_stats = None
-                                if (U is not None) and (Sigma is not None) and (V is not None):
+                                if (
+                                    (U is not None)
+                                    and (Sigma is not None)
+                                    and (V is not None)
+                                ):
                                     bytes_U = U.size * U.dtype.itemsize
                                     bytes_V = V.size * V.dtype.itemsize
                                     bytes_S = Sigma.size * Sigma.dtype.itemsize
@@ -385,7 +393,9 @@ class DrFindPeaksPyAlgos(Task):
                                         "U_bytes": int(bytes_U),
                                         "Sigma_bytes": int(bytes_S),
                                         "V_bytes": int(bytes_V),
-                                        "total_lr_bytes": int(bytes_U + bytes_V + bytes_S),
+                                        "total_lr_bytes": int(
+                                            bytes_U + bytes_V + bytes_S
+                                        ),
                                         "rank": int(Sigma.shape[0]),
                                         "dtype_U": str(U.dtype),
                                         "dtype_V": str(V.dtype),
@@ -399,17 +409,19 @@ class DrFindPeaksPyAlgos(Task):
 
                                 print(f"p is :{p}")
 
-                            
                                 hdffh: Any
                                 if self._task_parameters.mask_file is not None:
-                                    with h5py.File(self._task_parameters.mask_file, "r") as hdffh:
+                                    with h5py.File(
+                                        self._task_parameters.mask_file, "r"
+                                    ) as hdffh:
                                         loaded_mask: NDArray[numpy.int64] = hdffh[
                                             "entry_1/data_1/mask"
                                         ][:]
                                         mask *= loaded_mask.astype(numpy.uint16)
 
-                                
-                                alg = PyAlgos(mask=mask, pbits=0)  # pbits controls verbosity
+                                alg = PyAlgos(
+                                    mask=mask, pbits=0
+                                )  # pbits controls verbosity
                                 alg.set_peak_selection_pars(
                                     npix_min=self._task_parameters.npix_min,
                                     npix_max=self._task_parameters.npix_max,
@@ -441,37 +453,42 @@ class DrFindPeaksPyAlgos(Task):
                                 dr=self._task_parameters.dr,
                                 nsigm=self._task_parameters.nsigm,
                             )
-                            
+
                             def _to_yx(pk: Any) -> np.ndarray:
                                 pk = np.asarray(pk)
                                 if pk.size == 0:
                                     return np.zeros((0, 2), dtype=np.int64)
                                 if pk.ndim == 1:
                                     pk = pk.reshape(1, -1)
-                                if pk.shape[1] >= 3:          
+                                if pk.shape[1] >= 3:
                                     yx = pk[:, 1:3]
-                                else:                       
+                                else:
                                     yx = pk[:, 0:2]
                                 return yx.astype(np.int64, copy=False)
 
                             if save_this_event:
                                 np.save(
-                                    os.path.join(save_dir, f"peaks_orig_frame_{p}_{evt_id}.npy"),
+                                    os.path.join(
+                                        save_dir, f"peaks_orig_frame_{p}_{evt_id}.npy"
+                                    ),
                                     _to_yx(peaks_orig),
                                 )
                                 np.save(
-                                    os.path.join(save_dir, f"peaks_S_frame_{p}_{evt_id}.npy"),
+                                    os.path.join(
+                                        save_dir, f"peaks_S_frame_{p}_{evt_id}.npy"
+                                    ),
                                     _to_yx(peaks_S),
                                 )
                                 np.save(
-                                    os.path.join(save_dir, f"peaks_recon_frame_{p}_{evt_id}.npy"),
+                                    os.path.join(
+                                        save_dir, f"peaks_recon_frame_{p}_{evt_id}.npy"
+                                    ),
                                     _to_yx(peaks_recon),
                                 )
                         print(f"p is :{p}")
                         ###########
 
-
-                    except Exception as e:  
+                    except Exception as e:
                         print(f"[Frame {p}] Error during fit: {e}")
                         reconstructed_img[p] = img[p, :, :]
                         save_dir = "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/analysis/DrComp/failed_frames"
@@ -480,7 +497,7 @@ class DrFindPeaksPyAlgos(Task):
                         np.save(bad_img_path, img[p, :, :])
                         print(f"Saved failed frame to {bad_img_path}")
 
-        '''
+        """
 
                 img = reconstructed_img
 
@@ -692,7 +709,7 @@ class DrFindPeaksPyAlgos(Task):
                 print(f"{master_fname}", file=f)
 
             # Write out_file 
-            '''
+            """
 
     def _post_run(self) -> None:
         super()._post_run()
@@ -749,7 +766,9 @@ class DrFindPeaksPyAlgos(Task):
         Returns:
             tabs (pn.Tabs): Tabbed display of the image plots.
         """
-        self._task_parameters = cast(DrFindPeaksPyAlgosParameters, self._task_parameters)
+        self._task_parameters = cast(
+            DrFindPeaksPyAlgosParameters, self._task_parameters
+        )
 
         from mpi4py import MPI
 
@@ -757,7 +776,8 @@ class DrFindPeaksPyAlgos(Task):
             return None
 
         import holoviews as hv  # type: ignore
-        import panel as pn      # type: ignore
+        import panel as pn  # type: ignore
+
         hv.extension("bokeh")
         pn.extension()
 

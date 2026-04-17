@@ -43,8 +43,8 @@ def laplacian_eigs_periodic(m: int, n: int) -> np.ndarray:
     l = np.arange(n)
     wk = 2.0 * np.pi * k / m
     wl = 2.0 * np.pi * l / n
-    eig_k = (2.0 - 2.0 * np.cos(wk))
-    eig_l = (2.0 - 2.0 * np.cos(wl))
+    eig_k = 2.0 - 2.0 * np.cos(wk)
+    eig_l = 2.0 - 2.0 * np.cos(wl)
     return eig_k[:, None] + eig_l[None, :]
 
 
@@ -162,11 +162,11 @@ def admm_unmasked_tv_only(
         )
         L = np.real(np.fft.ifft2(np.fft.fft2(rhs) / denom_fft))
 
-        U1 += ((M - L - S) - R)
-        Uz += (L - Z)
+        U1 += (M - L - S) - R
+        Uz += L - Z
         gx, gy = grad_periodic(L)
-        Uwx += (gx - Wx)
-        Uwy += (gy - Wy)
+        Uwx += gx - Wx
+        Uwy += gy - Wy
 
         r1, r2, r3x, r3y = _stacked_primal_residuals_tv_only(M, L, S, R, Z, Wx, Wy)
         r_norm = _primal_norm_tv_only(r1, r2, r3x, r3y)
@@ -285,7 +285,6 @@ class RPCATVADMM(LSDrAlgo):
             verbose=self.verbose,
         )
         t1 = time.perf_counter()
-
 
         self.low_rank_ = L
         self.sparse_ = S

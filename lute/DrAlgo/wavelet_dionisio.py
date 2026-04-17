@@ -87,7 +87,9 @@ class WaveletManualManip2D(XhatDrAlgo):
         self.keep_coeffs = bool(keep_coeffs)
 
         self.zero_rules = list(zero_rules) if zero_rules is not None else []
-        self.threshold_rules = list(threshold_rules) if threshold_rules is not None else []
+        self.threshold_rules = (
+            list(threshold_rules) if threshold_rules is not None else []
+        )
 
         self.apply_mask = bool(apply_mask)
         self.mask = None if mask is None else np.asarray(mask)
@@ -129,7 +131,9 @@ class WaveletManualManip2D(XhatDrAlgo):
         f = Factors(X_hat=self.X_hat_, Resid=self.Resid_)
         if self.keep_coeffs and self.wavelet_storage_ is not None:
             f["coeff_arr"] = self.wavelet_storage_.coeff_arr
-            f["coeff_shape"] = np.asarray(self.wavelet_storage_.coeff_shape, dtype=np.int64)
+            f["coeff_shape"] = np.asarray(
+                self.wavelet_storage_.coeff_shape, dtype=np.int64
+            )
         return f
 
     def _resolve_level(self, level: int, n_levels: int) -> int:
@@ -137,28 +141,38 @@ class WaveletManualManip2D(XhatDrAlgo):
         if lvl < 0:
             lvl = n_levels + lvl
         if lvl < 0 or lvl >= n_levels:
-            raise ValueError(f"Invalid level {level}; valid range is [0, {n_levels - 1}] or negative indexing.")
+            raise ValueError(
+                f"Invalid level {level}; valid range is [0, {n_levels - 1}] or negative indexing."
+            )
         return lvl
 
     def _validate_band_name(self, band: str) -> None:
         if band not in ("LL", "LH", "HL", "HH"):
-            raise ValueError(f"Invalid band '{band}'. Use one of: 'LL', 'LH', 'HL', 'HH'.")
+            raise ValueError(
+                f"Invalid band '{band}'. Use one of: 'LL', 'LH', 'HL', 'HH'."
+            )
 
-    def _decompose_levels(self, X: np.ndarray, n_levels: int) -> List[Dict[str, np.ndarray]]:
+    def _decompose_levels(
+        self, X: np.ndarray, n_levels: int
+    ) -> List[Dict[str, np.ndarray]]:
         current = X
         levels: List[Dict[str, np.ndarray]] = []
         for _ in range(n_levels):
             LL, (LH, HL, HH) = pywt.dwt2(current, wavelet=self.wavelet, mode=self.mode)
-            levels.append({
-                "LL": np.asarray(LL, dtype=np.float32),
-                "LH": np.asarray(LH, dtype=np.float32),
-                "HL": np.asarray(HL, dtype=np.float32),
-                "HH": np.asarray(HH, dtype=np.float32),
-            })
+            levels.append(
+                {
+                    "LL": np.asarray(LL, dtype=np.float32),
+                    "LH": np.asarray(LH, dtype=np.float32),
+                    "HL": np.asarray(HL, dtype=np.float32),
+                    "HH": np.asarray(HH, dtype=np.float32),
+                }
+            )
             current = LL
         return levels
 
-    def _reconstruct_levels(self, levels: List[Dict[str, np.ndarray]], out_shape: Tuple[int, int]) -> np.ndarray:
+    def _reconstruct_levels(
+        self, levels: List[Dict[str, np.ndarray]], out_shape: Tuple[int, int]
+    ) -> np.ndarray:
         R = levels[-1]["LL"]
         for l in reversed(range(len(levels))):
             R = pywt.idwt2(
@@ -224,6 +238,7 @@ class WaveletManualManip2D(XhatDrAlgo):
                 raise ValueError("level must be >= 1")
 
         import time
+
         t0 = time.perf_counter()
 
         levels = self._decompose_levels(X, n_levels=n_levels)
@@ -238,12 +253,16 @@ class WaveletManualManip2D(XhatDrAlgo):
                 raise ValueError("apply_mask=True but mask is None.")
             mask = np.asarray(self.mask, dtype=np.float32)
             if mask.shape != Xhat.shape:
-                raise ValueError(f"mask shape {mask.shape} does not match image shape {Xhat.shape}.")
+                raise ValueError(
+                    f"mask shape {mask.shape} does not match image shape {Xhat.shape}."
+                )
             Xhat = Xhat * mask
 
         resid = X - Xhat
 
-        err = _fro_norm(resid) / (self._norm_X_ if self._norm_X_ else max(_fro_norm(X), 1e-12))
+        err = _fro_norm(resid) / (
+            self._norm_X_ if self._norm_X_ else max(_fro_norm(X), 1e-12)
+        )
         self.errors_.append(float(err))
         self.final_error_ = float(err)
         self.n_iter_ = 1
@@ -271,7 +290,6 @@ class WaveletManualManip2D(XhatDrAlgo):
                 mode=self.mode,
             )
 
-
         coeff_raw_bytes = int(coeff_arr.nbytes)
         coeff_zlib_bytes = int(_zlib_size_bytes(coeff_arr, level=self.entropy_level))
         coeff_zlib_ratio = float(coeff_raw_bytes / max(coeff_zlib_bytes, 1))
@@ -297,20 +315,15 @@ class WaveletManualManip2D(XhatDrAlgo):
             "coeff_raw_bytes": int(coeff_raw_bytes),
             "coeff_zlib_bytes": int(coeff_zlib_bytes),
             "coeff_zlib_ratio": float(coeff_zlib_ratio),
-
             "compressed_payload_bytes": int(coeff_zlib_bytes),
-
             "coeff_nnz": int(coeff_nnz),
             "coeff_total": int(coeff_total),
             "coeff_nnz_frac": float(coeff_nnz / max(coeff_total, 1)),
-
             "lossless_zlib_bytes": int(lossless_bytes),
             "lossless_zlib_ratio": float(lossless_ratio),
             "wavelet_vs_lossless_ratio": float(wavelet_vs_lossless),
-
             "bpp_wavelet": float(bpp_wavelet),
             "bpp_lossless_zlib": float(bpp_lossless),
-
             "manual_wavelet_levels": int(n_levels),
             "manual_wavelet_mode": str(self.mode),
             "manual_zero_rule_count": int(len(self.zero_rules)),
@@ -319,10 +332,16 @@ class WaveletManualManip2D(XhatDrAlgo):
 
         if getattr(self, "verbose", False):
             ratio = x_bytes / max(wavelet_bytes, 1.0)
-            print(f"[WaveletManualManip2D] levels={n_levels} wavelet={self.wavelet} mode={self.mode}")
-            print(f"[WaveletManualManip2D] zero_rules={len(self.zero_rules)} threshold_rules={len(self.threshold_rules)}")
+            print(
+                f"[WaveletManualManip2D] levels={n_levels} wavelet={self.wavelet} mode={self.mode}"
+            )
+            print(
+                f"[WaveletManualManip2D] zero_rules={len(self.zero_rules)} threshold_rules={len(self.threshold_rules)}"
+            )
             print(f"[WaveletManualManip2D] coeff_zlib_bytes={coeff_zlib_bytes}")
             print(f"[WaveletManualManip2D] lossless_zlib_bytes={lossless_bytes}")
-            print(f"[WaveletManualManip2D] wavelet_vs_lossless_ratio={wavelet_vs_lossless:.6g}x")
+            print(
+                f"[WaveletManualManip2D] wavelet_vs_lossless_ratio={wavelet_vs_lossless:.6g}x"
+            )
             print(f"[WaveletManualManip2D] bpp_wavelet={bpp_wavelet:.6g}")
             print(f"[WaveletManualManip2D] rel_fro_error={err:.6g}")

@@ -48,7 +48,7 @@ class IndexCrystFELParameters(ThirdPartyParameters):
         """Whether long command-line arguments are passed like `--long=arg`."""
 
     executable: str = Field(
-        #"/sdf/group/lcls/ds/tools/crystfel/0.10.2/bin/indexamajig",
+        # "/sdf/group/lcls/ds/tools/crystfel/0.10.2/bin/indexamajig",
         "indexamajig",
         description="CrystFEL's indexing binary.",
         flag_type="",
@@ -175,11 +175,11 @@ class IndexCrystFELParameters(ThirdPartyParameters):
         flag_type="--",
         rename_param="no-image-data",
     )
-    #quiet: bool = Field(
-        #False,
-        #description="Suppress most output from CrystFEL.",
-        #flag_type=None
-    #)
+    # quiet: bool = Field(
+    # False,
+    # description="Suppress most output from CrystFEL.",
+    # flag_type=None
+    # )
     # Peak-finding options
     # ....
     # Indexing options

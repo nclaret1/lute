@@ -35,7 +35,9 @@ def _smallest_signed_int_dtype(max_abs: int) -> np.dtype:
     return np.int32
 
 
-def _children_indices(r: int, c: int, child_shape: Tuple[int, int]) -> List[Tuple[int, int]]:
+def _children_indices(
+    r: int, c: int, child_shape: Tuple[int, int]
+) -> List[Tuple[int, int]]:
     out: List[Tuple[int, int]] = []
     r0 = 2 * r
     c0 = 2 * c
@@ -61,7 +63,7 @@ def _compute_subtree_zero_flags(bands: Sequence[np.ndarray]) -> List[np.ndarray]
     if L == 0:
         return flags
 
-    flags[-1] = (bands[-1] == 0)
+    flags[-1] = bands[-1] == 0
 
     for lev in range(L - 2, -1, -1):
         curr = bands[lev]
@@ -169,7 +171,6 @@ class WaveletCompressedInfo:
 
 
 class WaveletBivariateShrinkEZW2D_noDenoise(WaveletBivariateShrink2D):
-
 
     def __init__(
         self,
@@ -306,7 +307,9 @@ class WaveletBivariateShrinkEZW2D_noDenoise(WaveletBivariateShrink2D):
             symbol_stats[orient_name] = stats
 
             sym_blob = zlib.compress(symbols.tobytes(order="C"), self.entropy_level)
-            mag_blob = zlib.compress(np.asarray(mags, order="C").tobytes(order="C"), self.entropy_level)
+            mag_blob = zlib.compress(
+                np.asarray(mags, order="C").tobytes(order="C"), self.entropy_level
+            )
 
             tree_symbol_bytes_total += len(sym_blob)
             tree_mag_bytes_total += len(mag_blob)
@@ -315,7 +318,7 @@ class WaveletBivariateShrinkEZW2D_noDenoise(WaveletBivariateShrink2D):
             chunks.append(pack_chunk(f"{orient_name}_mag", mag_blob))
 
         q_steps = [
-            float(self.q_detail_step * (self.q_detail_growth ** lev))
+            float(self.q_detail_step * (self.q_detail_growth**lev))
             for lev in range(len(qdetails))
         ]
 
@@ -379,6 +382,7 @@ class WaveletBivariateShrinkEZW2D_noDenoise(WaveletBivariateShrink2D):
             level = int(self.level)
 
         import time
+
         t0 = time.perf_counter()
 
         coeffs = pywt.wavedec2(X, wavelet=self.wavelet, level=level, mode=self.mode)
@@ -390,8 +394,10 @@ class WaveletBivariateShrinkEZW2D_noDenoise(WaveletBivariateShrink2D):
         nnz_before = 0
         nnz_after = 0
 
-        for (cH, cV, cD) in details:
-            nnz_before += int(np.count_nonzero(cH) + np.count_nonzero(cV) + np.count_nonzero(cD))
+        for cH, cV, cD in details:
+            nnz_before += int(
+                np.count_nonzero(cH) + np.count_nonzero(cV) + np.count_nonzero(cD)
+            )
 
             cH_t = np.asarray(cH, dtype=np.float32)
             cV_t = np.asarray(cV, dtype=np.float32)
@@ -408,7 +414,7 @@ class WaveletBivariateShrinkEZW2D_noDenoise(WaveletBivariateShrink2D):
         qdetails: List[Tuple[np.ndarray, np.ndarray, np.ndarray]] = []
         detail_steps: List[float] = []
         for lev, (cH_t, cV_t, cD_t) in enumerate(passthrough_details):
-            step = float(self.q_detail_step * (self.q_detail_growth ** lev))
+            step = float(self.q_detail_step * (self.q_detail_growth**lev))
             detail_steps.append(step)
             qH = _quantize(cH_t, step)
             qV = _quantize(cV_t, step)
@@ -416,9 +422,7 @@ class WaveletBivariateShrinkEZW2D_noDenoise(WaveletBivariateShrink2D):
             qdetails.append((qH, qV, qD))
 
         # 3) Tree significance coding + 4) entropy coding
-        compressed_info = self._serialize_payload(
-            qA, qdetails, original_shape=(m, n)
-        )
+        compressed_info = self._serialize_payload(qA, qdetails, original_shape=(m, n))
         self.compressed_info_ = compressed_info
 
         # 5) Reconstruct from quantized coeffs
@@ -426,11 +430,13 @@ class WaveletBivariateShrinkEZW2D_noDenoise(WaveletBivariateShrink2D):
         details_rec: List[Tuple[np.ndarray, np.ndarray, np.ndarray]] = []
         for lev, (qH, qV, qD) in enumerate(qdetails):
             step = detail_steps[lev]
-            details_rec.append((
-                _dequantize(qH, step).astype(np.float32),
-                _dequantize(qV, step).astype(np.float32),
-                _dequantize(qD, step).astype(np.float32),
-            ))
+            details_rec.append(
+                (
+                    _dequantize(qH, step).astype(np.float32),
+                    _dequantize(qV, step).astype(np.float32),
+                    _dequantize(qD, step).astype(np.float32),
+                )
+            )
 
         coeffs_q = [cA_rec] + details_rec
 
@@ -438,7 +444,9 @@ class WaveletBivariateShrinkEZW2D_noDenoise(WaveletBivariateShrink2D):
         Xhat = np.asarray(Xhat, dtype=np.float32)[:m, :n]
         resid = X - Xhat
 
-        err = _fro_norm(resid) / (self._norm_X_ if self._norm_X_ else max(_fro_norm(X), 1e-12))
+        err = _fro_norm(resid) / (
+            self._norm_X_ if self._norm_X_ else max(_fro_norm(X), 1e-12)
+        )
         self.errors_.append(float(err))
         self.final_error_ = float(err)
         self.n_iter_ = 1
@@ -489,7 +497,6 @@ class WaveletBivariateShrinkEZW2D_noDenoise(WaveletBivariateShrink2D):
             "model3_threshold_scale": 0.0,
         }
 
-
         self._model3_metrics_ = {
             "sigma_n": np.nan,
             "observed_sigma_method": "disabled",
@@ -505,16 +512,15 @@ class WaveletBivariateShrinkEZW2D_noDenoise(WaveletBivariateShrink2D):
             "compressed_header_bytes": int(compressed_info.header_bytes),
             "compressed_approx_bytes": int(compressed_info.approx_bytes),
             "compressed_tree_symbol_bytes": int(compressed_info.tree_symbol_bytes),
-            "compressed_tree_magnitude_bytes": int(compressed_info.tree_magnitude_bytes),
-
+            "compressed_tree_magnitude_bytes": int(
+                compressed_info.tree_magnitude_bytes
+            ),
             "q_approx_step": float(self.q_approx_step),
             "q_detail_step_base": float(self.q_detail_step),
             "q_detail_growth": float(self.q_detail_growth),
-
             "lossless_zlib_bytes": int(lossless_bytes),
             "lossless_zlib_ratio": float(lossless_ratio),
             "wavelet_vs_lossless_ratio": float(wavelet_vs_lossless),
-
             "bpp_wavelet": float(bpp_wavelet),
             "bpp_lossless_zlib": float(bpp_lossless),
         }
@@ -528,12 +534,22 @@ class WaveletBivariateShrinkEZW2D_noDenoise(WaveletBivariateShrink2D):
             print(f"[WaveletBivariateShrinkEZW2D] level={level}")
             print("[WaveletBivariateShrinkEZW2D] bivariate shrinkage=DISABLED")
             print("[WaveletBivariateShrinkEZW2D] post-thresholding=DISABLED")
-            print(f"[WaveletBivariateShrinkEZW2D] q_approx_step={self.q_approx_step:.6g}")
-            print(f"[WaveletBivariateShrinkEZW2D] q_detail_step={self.q_detail_step:.6g}")
-            print(f"[WaveletBivariateShrinkEZW2D] coeff nnz kept before/after passthrough={kept:.2f}%")
-            print(f"[WaveletBivariateShrinkEZW2D] compressed_payload_bytes={int(c_bytes)}")
+            print(
+                f"[WaveletBivariateShrinkEZW2D] q_approx_step={self.q_approx_step:.6g}"
+            )
+            print(
+                f"[WaveletBivariateShrinkEZW2D] q_detail_step={self.q_detail_step:.6g}"
+            )
+            print(
+                f"[WaveletBivariateShrinkEZW2D] coeff nnz kept before/after passthrough={kept:.2f}%"
+            )
+            print(
+                f"[WaveletBivariateShrinkEZW2D] compressed_payload_bytes={int(c_bytes)}"
+            )
             print(f"[WaveletBivariateShrinkEZW2D] compression_ratio={ratio:.6g}x")
             print(f"[WaveletBivariateShrinkEZW2D] rel_fro_error={err:.6g}")
             print(f"[WaveletBivariateShrinkEZW2D] lossless_zlib_bytes={lossless_bytes}")
-            print(f"[WaveletBivariateShrinkEZW2D] wavelet_vs_lossless_ratio={wavelet_vs_lossless:.4f}x")
+            print(
+                f"[WaveletBivariateShrinkEZW2D] wavelet_vs_lossless_ratio={wavelet_vs_lossless:.4f}x"
+            )
             print(f"[WaveletBivariateShrinkEZW2D] bpp_wavelet={bpp_wavelet:.4f}")

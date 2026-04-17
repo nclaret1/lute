@@ -24,7 +24,9 @@ def _mad_sigma(x: np.ndarray) -> float:
     return float(np.median(np.abs(x - med)) / 0.6745)
 
 
-def _expand_parent_to_child(parent: np.ndarray, child_shape: Tuple[int, int]) -> np.ndarray:
+def _expand_parent_to_child(
+    parent: np.ndarray, child_shape: Tuple[int, int]
+) -> np.ndarray:
     """
     Map parent coeffs (coarser scale) onto child grid by 2x nearest-neighbor expansion,
     then crop to child_shape. This implements parent-child mapping for decimated DWT.
@@ -35,6 +37,7 @@ def _expand_parent_to_child(parent: np.ndarray, child_shape: Tuple[int, int]) ->
 
 
 # ---------- local statistics (no scipy) ----------
+
 
 def _box_filter2d(x: np.ndarray, r: int) -> np.ndarray:
     """
@@ -49,10 +52,14 @@ def _box_filter2d(x: np.ndarray, r: int) -> np.ndarray:
 
     xp = np.pad(x, ((r, r), (r, r)), mode="reflect")
     # integral image with leading zero row/col
-    ii = np.pad(xp, ((1, 0), (1, 0)), mode="constant", constant_values=0.0).cumsum(0).cumsum(1)
+    ii = (
+        np.pad(xp, ((1, 0), (1, 0)), mode="constant", constant_values=0.0)
+        .cumsum(0)
+        .cumsum(1)
+    )
 
     # sum over kxk window using integral image
-    s = (ii[k:, k:] - ii[:-k, k:] - ii[k:, :-k] + ii[:-k, :-k])
+    s = ii[k:, k:] - ii[:-k, k:] - ii[k:, :-k] + ii[:-k, :-k]
     return s / float(k * k)
 
 
@@ -190,7 +197,9 @@ class WaveletBivariateShrink2D(XhatDrAlgo):
         f = Factors(X_hat=self.X_hat_, Resid=self.Resid_)
         if self.keep_coeffs and self.wavelet_storage_ is not None:
             f["coeff_arr"] = self.wavelet_storage_.coeff_arr
-            f["coeff_shape"] = np.asarray(self.wavelet_storage_.coeff_shape, dtype=np.int64)
+            f["coeff_shape"] = np.asarray(
+                self.wavelet_storage_.coeff_shape, dtype=np.int64
+            )
         return f
 
     def _fit_core(self, Xc: npt.NDArray, **kwargs: Any) -> None:
@@ -209,14 +218,17 @@ class WaveletBivariateShrink2D(XhatDrAlgo):
             level = int(self.level)
 
         import time
+
         t0 = time.perf_counter()
 
         coeffs = pywt.wavedec2(X, wavelet=self.wavelet, level=level, mode=self.mode)
         cA = coeffs[0]
-        details = list(coeffs[1:])  # coarse->fine: [(cH_L,cV_L,cD_L), ..., (cH_1,cV_1,cD_1)]
+        details = list(
+            coeffs[1:]
+        )  # coarse->fine: [(cH_L,cV_L,cD_L), ..., (cH_1,cV_1,cD_1)]
 
         # ---- classic: sigma_n from finest diagonal HH1 (cD_1) via MAD
-        (cH1, cV1, cD1) = details[-1]
+        cH1, cV1, cD1 = details[-1]
         sigma_n = float(_mad_sigma(cD1))
 
         new_details: List[Tuple[np.ndarray, np.ndarray, np.ndarray]] = []
@@ -224,25 +236,41 @@ class WaveletBivariateShrink2D(XhatDrAlgo):
         nnz_after = 0
 
         for i, (cH, cV, cD) in enumerate(details):
-            nnz_before += int(np.count_nonzero(cH) + np.count_nonzero(cV) + np.count_nonzero(cD))
+            nnz_before += int(
+                np.count_nonzero(cH) + np.count_nonzero(cV) + np.count_nonzero(cD)
+            )
 
             if i == 0:
                 pH = np.zeros_like(cH)
                 pV = np.zeros_like(cV)
                 pD = np.zeros_like(cD)
             else:
-                (pH0, pV0, pD0) = details[i - 1]
+                pH0, pV0, pD0 = details[i - 1]
                 pH = _expand_parent_to_child(pH0, cH.shape)
                 pV = _expand_parent_to_child(pV0, cV.shape)
                 pD = _expand_parent_to_child(pD0, cD.shape)
 
             # classic BiShrink-style per orientation
-            cH_t = _bishrink_classic(cH, pH, sigma_n=sigma_n, win_radius=self.win_radius).astype(np.float64)
-            cV_t = _bishrink_classic(cV, pV, sigma_n=sigma_n, win_radius=self.win_radius).astype(np.float64)
-            cD_t = _bishrink_classic(cD, pD, sigma_n=sigma_n, win_radius=self.win_radius).astype(np.float64)
+            cH_t = _bishrink_classic(
+                cH, pH, sigma_n=sigma_n, win_radius=self.win_radius
+            ).astype(np.float64)
+            cV_t = _bishrink_classic(
+                cV, pV, sigma_n=sigma_n, win_radius=self.win_radius
+            ).astype(np.float64)
+            cD_t = _bishrink_classic(
+                cD, pD, sigma_n=sigma_n, win_radius=self.win_radius
+            ).astype(np.float64)
 
-            nnz_after += int(np.count_nonzero(cH_t) + np.count_nonzero(cV_t) + np.count_nonzero(cD_t))
-            new_details.append((cH_t.astype(np.float32), cV_t.astype(np.float32), cD_t.astype(np.float32)))
+            nnz_after += int(
+                np.count_nonzero(cH_t) + np.count_nonzero(cV_t) + np.count_nonzero(cD_t)
+            )
+            new_details.append(
+                (
+                    cH_t.astype(np.float32),
+                    cV_t.astype(np.float32),
+                    cD_t.astype(np.float32),
+                )
+            )
 
         coeffs_t = [cA.astype(np.float32)] + new_details
 
@@ -250,7 +278,9 @@ class WaveletBivariateShrink2D(XhatDrAlgo):
         Xhat = np.asarray(Xhat, dtype=np.float32)[:m, :n]
         resid = X - Xhat
 
-        err = _fro_norm(resid) / (self._norm_X_ if self._norm_X_ else max(_fro_norm(X), 1e-12))
+        err = _fro_norm(resid) / (
+            self._norm_X_ if self._norm_X_ else max(_fro_norm(X), 1e-12)
+        )
         self.errors_.append(float(err))
         self.final_error_ = float(err)
         self.n_iter_ = 1
@@ -272,7 +302,9 @@ class WaveletBivariateShrink2D(XhatDrAlgo):
             "coeff_zlib_ratio": ratio,
             "coeff_nnz": int(np.count_nonzero(coeff_arr)),
             "coeff_total": int(coeff_arr.size),
-            "coeff_nnz_frac": float(np.count_nonzero(coeff_arr) / max(coeff_arr.size, 1)),
+            "coeff_nnz_frac": float(
+                np.count_nonzero(coeff_arr) / max(coeff_arr.size, 1)
+            ),
             "bishrink_sigma_n_from": "HH1_MAD",
             "bishrink_win_radius": int(self.win_radius),
             "bishrink_wavelet_level": int(level),

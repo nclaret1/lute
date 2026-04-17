@@ -6,32 +6,36 @@ from scipy.sparse.linalg import svds
 from scipy.linalg import svd, qr
 from .DrAlgo import LSDrAlgo, Factors, _fro_norm, NotFittedError, _check_2d
 
-def wthresh(A: np.ndarray, thresh: float) -> np.ndarray:
-    out=A.copy(); out[np.abs(out)<thresh]=0; return out
 
-#will need to implement if center
+def wthresh(A: np.ndarray, thresh: float) -> np.ndarray:
+    out = A.copy()
+    out[np.abs(out) < thresh] = 0
+    return out
+
+
+# will need to implement if center
 class RPCAAltProj(LSDrAlgo):
     def __init__(
-            self, 
-            n_components: Optional[int]=None, 
-            *, 
-            max_iter:int=1000,
-            tol:float=1e-3, 
-            beta:Optional[float]=None, 
-            beta_init:Optional[float]=None,
-            gamma:float=0.7, 
-            mu:Tuple[float,float]=(5,5), 
-            trim:bool=False,
-            verbose:bool=False, 
-            copy_:bool=True
-            ):
+        self,
+        n_components: Optional[int] = None,
+        *,
+        max_iter: int = 1000,
+        tol: float = 1e-3,
+        beta: Optional[float] = None,
+        beta_init: Optional[float] = None,
+        gamma: float = 0.7,
+        mu: Tuple[float, float] = (5, 5),
+        trim: bool = False,
+        verbose: bool = False,
+        copy_: bool = True,
+    ):
         super().__init__(
             n_components=n_components,
             max_iter=max_iter,
-            tol=tol, 
-            verbose=False, 
-            copy_=copy_
-            )
+            tol=tol,
+            verbose=False,
+            copy_=copy_,
+        )
         if n_components is not None and n_components <= 0:
             raise ValueError(
                 f"Expected positive number of components, got {n_components} instead."
@@ -57,7 +61,7 @@ class RPCAAltProj(LSDrAlgo):
 
         n_samples, n_features = X.shape
         if self.beta is None:
-            beta = 1 /  (2 * np.power(n_samples * n_features, 1 / 4))
+            beta = 1 / (2 * np.power(n_samples * n_features, 1 / 4))
         else:
             beta = self.beta
         if self.beta_init is None:
@@ -77,7 +81,7 @@ class RPCAAltProj(LSDrAlgo):
         Sigma: npt.NDArray
         V: npt.NDArray
         U, s, Vt = svds(X - S, n_components)  # type: ignore
-        idx = np.argsort(s)[::-1] 
+        idx = np.argsort(s)[::-1]
         s = s[idx]
         U = U[:, idx]
         Vt = Vt[idx, :]
@@ -100,22 +104,22 @@ class RPCAAltProj(LSDrAlgo):
     def __fit_core(
         self, X: npt.NDArray
     ) -> Tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
-        
+
         _check_2d(X)
 
         errors = []
         timers = []
         norm_of_X: float
-        
-        #Noemie moving this after centering X
-        #norm_of_X = norm(X, "fro")  # type: ignore
-        #self.mean_ = np.mean(X, axis=0)
-        #X = np.subtract(X, self.mean_)
+
+        # Noemie moving this after centering X
+        # norm_of_X = norm(X, "fro")  # type: ignore
+        # self.mean_ = np.mean(X, axis=0)
+        # X = np.subtract(X, self.mean_)
         norm_of_X = norm(X, "fro")  # type: ignore
 
         init_start = time.perf_counter()
         L, S, U, Sigma, V = self._initialisation(X)
-        #errors.append(self._compute_error(X, L, S, norm_of_X))
+        # errors.append(self._compute_error(X, L, S, norm_of_X))
         init_timer = time.perf_counter() - init_start
 
         i = 1
@@ -142,23 +146,22 @@ class RPCAAltProj(LSDrAlgo):
             M = np.vstack(
                 [np.hstack([U.T @ Z @ V, R1.T]), np.hstack([R2, np.zeros_like(R2)])]
             )
-            
+
             U_of_M, Sigma, V_of_M = svd(M, full_matrices=False)
-            V_of_M = V_of_M.T 
+            V_of_M = V_of_M.T
             Sigma = np.diag(Sigma)
             # These 2 matrices multiplications can be computed in parallel
             U = np.hstack([U, Q2]) @ U_of_M[:, : self.n_components_]
             V = np.hstack([V, Q1]) @ V_of_M[:, : self.n_components_]
-            L = U @ Sigma[: self.n_components_, : self.n_components_ ] @ V.T
+            L = U @ Sigma[: self.n_components_, : self.n_components_] @ V.T
 
             # update S
 
             zeta = self.beta_ * (
-            Sigma[self.n_components_, self.n_components_]
+                Sigma[self.n_components_, self.n_components_]
                 + ((self.gamma**i) * Sigma[0, 0])
             )
             S = wthresh(X - L, zeta)
-
 
             error = self._compute_error(X, L, S, norm_of_X)
             errors.append(error)
@@ -168,7 +171,7 @@ class RPCAAltProj(LSDrAlgo):
 
             print(f"[{i}] Tolerance: {self.tol}\tCurrent error: {error}")
             if error < self.tol:
-                #if self.verbose:
+                # if self.verbose:
                 print("Tolerance condition met.")
                 break
         if error > self.tol:
@@ -185,14 +188,14 @@ class RPCAAltProj(LSDrAlgo):
                 "S": S,
             }
         )
-        
+
         self.low_rank_ = L
         self.sparse_ = S
 
         # transpose V for consistency with sklearn's pca
-        #self.components_ = V.T
+        # self.components_ = V.T
         # flatten the Sigma for consistency with sklearn's pca
-        #self.singular_values_ = np.diag(Sigma)[: self.n_components_]
+        # self.singular_values_ = np.diag(Sigma)[: self.n_components_]
 
         self.end_iter_ = i
         self.errors_ = errors
@@ -200,11 +203,9 @@ class RPCAAltProj(LSDrAlgo):
         timers[0] += init_timer
         self.timers_ = timers
 
-        #print(f"Final error after {i} iterations: {errors[-1]}")
+        # print(f"Final error after {i} iterations: {errors[-1]}")
         return L, S, U, Sigma, V
-    
 
-    
     @staticmethod
     def __trim(X: npt.NDArray, mu_X: float) -> Tuple[npt.NDArray, npt.NDArray]:
         m, r = X.shape
@@ -222,12 +223,7 @@ class RPCAAltProj(LSDrAlgo):
         return Q, R
 
     def _trim(
-        self, 
-        U: npt.NDArray, 
-        Sig: npt.NDArray, 
-        V: npt.NDArray, 
-        mu_V: float, 
-        mu_U: float
+        self, U: npt.NDArray, Sig: npt.NDArray, V: npt.NDArray, mu_V: float, mu_U: float
     ) -> Tuple[npt.NDArray, npt.NDArray]:
         # these 2 qr can be computed in parallel
         Q1, R1 = self.__trim(U, mu_U)
@@ -237,13 +233,8 @@ class RPCAAltProj(LSDrAlgo):
 
     @staticmethod
     def _compute_error(
-        X: npt.NDArray, 
-        L: npt.NDArray, 
-        S: npt.NDArray, 
-        norm_of_X: Optional[float]
+        X: npt.NDArray, L: npt.NDArray, S: npt.NDArray, norm_of_X: Optional[float]
     ) -> float:
         return norm(X - (L + S), "fro") / (
             norm(X, "fro") if norm_of_X is None else norm_of_X
-        )  # type:ignore
-    
-
+        )  # type: ignore

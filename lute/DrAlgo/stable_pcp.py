@@ -68,13 +68,13 @@ class StablePCPAlgo(LSDrAlgo):
         Xc = _check_2d(Xc)
         m, n = Xc.shape
 
-        #eff_max_rank = self.max_rank
-        #if eff_max_rank is None:
-            #eff_max_rank = self.n_components 
-        #if eff_max_rank is None:
-            #eff_max_rank = min(m, n)
-        #self.max_rank = eff_max_rank
-        #print("Effective max_rank:", eff_max_rank)
+        # eff_max_rank = self.max_rank
+        # if eff_max_rank is None:
+        # eff_max_rank = self.n_components
+        # if eff_max_rank is None:
+        # eff_max_rank = min(m, n)
+        # self.max_rank = eff_max_rank
+        # print("Effective max_rank:", eff_max_rank)
         self.max_rank = np.maximum(n, m)
 
         L0 = np.zeros((m, n))

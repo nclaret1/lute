@@ -154,5 +154,6 @@ def factors(self) -> Factors:
         raise NotFittedError
     return Factors(L=self.low_rank_, S=self.sparse_)
 
+
 def _reconstruct(self, f: Factors) -> npt.NDArray:
     return f["L"] + f["S"]

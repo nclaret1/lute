@@ -35,10 +35,10 @@ from lute.tasks.sfx_find_peaks import (
 )
 from lute.tasks.task import Task
 
-
 # -----------------------------------------------------------------------------
 # PSEUDO-SQRT MONKEY PATCH SUPPORT
 # -----------------------------------------------------------------------------
+
 
 def _stats_line(x: np.ndarray, *, name: str, max_adu: int) -> str:
     a = np.asarray(x, dtype=np.float32).ravel()
@@ -66,8 +66,6 @@ def _stats_line(x: np.ndarray, *, name: str, max_adu: int) -> str:
     )
 
 
-
-
 def psqrt_roundtrip_fracbits_gain_equalized(
     x: np.ndarray,
     *,
@@ -92,7 +90,7 @@ def psqrt_roundtrip_fracbits_gain_equalized(
     x0_pos = x0[finite0]
     x0_pos = x0_pos[x0_pos > 0.0]
     if x0_pos.size == 0:
-        return (np.zeros_like(x0, dtype=np.float32) - np.float32(offset))
+        return np.zeros_like(x0, dtype=np.float32) - np.float32(offset)
 
     if peak_mode == "max":
         x_peak_unshifted = float(np.max(x0_pos))
@@ -113,7 +111,7 @@ def psqrt_roundtrip_fracbits_gain_equalized(
         x_max_use = float(x_max)
 
     if x_max_use <= 0.0:
-        return (np.zeros_like(x0, dtype=np.float32) - np.float32(offset))
+        return np.zeros_like(x0, dtype=np.float32) - np.float32(offset)
 
     k = (float(y_max) * float(y_max)) / x_max_use
 
@@ -143,7 +141,7 @@ def psqrt_roundtrip_adu(
     if clip:
         x = np.clip(x, 0, max_adu)
     code = np.rint(np.sqrt(kk * x))
-    x_rec = (code ** 2) / kk
+    x_rec = (code**2) / kk
     return x_rec
 
 
@@ -237,7 +235,11 @@ def patch_epix10ka_calib_nda_psqrt(
             logger.debug(
                 info_ndarr(gmask, "gmask")
                 + "\n  per panel statistics of cm-corrected pixels: %s"
-                % str(np.sum(gmask, axis=(1, 2), dtype=np.uint32) if gmask is not None else None)
+                % str(
+                    np.sum(gmask, axis=(1, 2), dtype=np.uint32)
+                    if gmask is not None
+                    else None
+                )
             )
 
             hrows = 176
@@ -282,7 +284,8 @@ def patch_epix10ka_calib_nda_psqrt(
                     )
 
             logger.debug(
-                "TIME common-mode correction = %.6f sec for cmps=%s" % (time() - t0_sec_cm, str(cmps))
+                "TIME common-mode correction = %.6f sec for cmps=%s"
+                % (time() - t0_sec_cm, str(cmps))
             )
 
         res = arrf * factor if mask is None else arrf * factor * mask
@@ -326,7 +329,9 @@ class MetricsWriter:
         self._reservoir: list[dict[str, Any]] = []
 
         self.outdir.mkdir(parents=True, exist_ok=True)
-        self.filename = self.outdir / f"r{self.run:04d}_metrics_rank{self.rank:03d}{self.tag}.h5"
+        self.filename = (
+            self.outdir / f"r{self.run:04d}_metrics_rank{self.rank:03d}{self.tag}.h5"
+        )
         self.file: Optional[h5py.File] = None
         self.event_count = 0
 
@@ -351,7 +356,9 @@ class MetricsWriter:
         self.event_count += 1
         self.file.flush()
 
-    def _write_metrics_recursive(self, group: h5py.Group, metrics: Dict[str, Any]) -> None:
+    def _write_metrics_recursive(
+        self, group: h5py.Group, metrics: Dict[str, Any]
+    ) -> None:
         for key, value in metrics.items():
             k = str(key)
             if isinstance(value, dict):
@@ -370,7 +377,11 @@ class MetricsWriter:
         original_img: np.ndarray,
         reconstructed_img: np.ndarray,
     ) -> None:
-        if (not self.save_debug_panels) or (self.n_debug_events <= 0) or (self.panels_per_event <= 0):
+        if (
+            (not self.save_debug_panels)
+            or (self.n_debug_events <= 0)
+            or (self.panels_per_event <= 0)
+        ):
             return
 
         P = int(original_img.shape[0])
@@ -383,8 +394,14 @@ class MetricsWriter:
             "event_id": int(event_id),
             "timestamp": float(timestamp),
             "panel_ids": panel_ids,
-            "original": [np.asarray(original_img[int(p)], dtype=self.debug_dtype, order="C") for p in panel_ids],
-            "reconstructed": [np.asarray(reconstructed_img[int(p)], dtype=self.debug_dtype, order="C") for p in panel_ids],
+            "original": [
+                np.asarray(original_img[int(p)], dtype=self.debug_dtype, order="C")
+                for p in panel_ids
+            ],
+            "reconstructed": [
+                np.asarray(reconstructed_img[int(p)], dtype=self.debug_dtype, order="C")
+                for p in panel_ids
+            ],
         }
 
         self._seen += 1
@@ -396,7 +413,9 @@ class MetricsWriter:
         if j < self.n_debug_events:
             self._reservoir[j] = payload
 
-    def _write_small_dataset(self, group: h5py.Group, name: str, arr2d: np.ndarray) -> None:
+    def _write_small_dataset(
+        self, group: h5py.Group, name: str, arr2d: np.ndarray
+    ) -> None:
         if name in group:
             del group[name]
         a = np.asarray(arr2d, dtype=self.debug_dtype, order="C")
@@ -456,11 +475,10 @@ class MetricsWriter:
         self.close()
 
 
-
-
 # -----------------------------------------------------------------------------
 # TASK
 # -----------------------------------------------------------------------------
+
 
 class DrFindPeaksPyAlgos(Task):
     """
@@ -468,7 +486,9 @@ class DrFindPeaksPyAlgos(Task):
     using the PyAlgos peak finding algorithms and writes the peak information to CXI files.
     """
 
-    def __init__(self, *, params: DrFindPeaksPyAlgosParameters, use_mpi: bool = True) -> None:
+    def __init__(
+        self, *, params: DrFindPeaksPyAlgosParameters, use_mpi: bool = True
+    ) -> None:
         super().__init__(params=params, use_mpi=use_mpi)
 
     def _run(self) -> None:
@@ -481,7 +501,9 @@ class DrFindPeaksPyAlgos(Task):
         APPLY_PSQRT_KEV = False
         FRAC_BITS = 0.75
 
-        self._task_parameters = cast(DrFindPeaksPyAlgosParameters, self._task_parameters)
+        self._task_parameters = cast(
+            DrFindPeaksPyAlgosParameters, self._task_parameters
+        )
         ENABLE_ELOG: bool = False  # os.getenv("LUTE_ENABLE_ELOG", "0") == "1"
 
         ds: Any = MPIDataSource(
@@ -502,13 +524,18 @@ class DrFindPeaksPyAlgos(Task):
                 DO_LOG=DO_LOG,
             )
             print("[psqrt] calib_epix10ka_nda patched:", True)
-        
 
         evr: Any = Detector(self._task_parameters.event_receiver)
 
-        i_x: Any = det.indexes_x(self._task_parameters.lute_config.run).astype(numpy.int64)
-        i_y: Any = det.indexes_y(self._task_parameters.lute_config.run).astype(numpy.int64)
-        ipx, ipy = det.point_indexes(self._task_parameters.lute_config.run, pxy_um=(0, 0))
+        i_x: Any = det.indexes_x(self._task_parameters.lute_config.run).astype(
+            numpy.int64
+        )
+        i_y: Any = det.indexes_y(self._task_parameters.lute_config.run).astype(
+            numpy.int64
+        )
+        ipx, ipy = det.point_indexes(
+            self._task_parameters.lute_config.run, pxy_um=(0, 0)
+        )
 
         alg: Any = None
         num_hits: int = 0
@@ -555,7 +582,9 @@ class DrFindPeaksPyAlgos(Task):
             if isinstance(self._task_parameters.pv_camera_length, float):
                 clen: float = self._task_parameters.pv_camera_length
             else:
-                clen = ds.env().epicsStore().value(self._task_parameters.pv_camera_length)
+                clen = (
+                    ds.env().epicsStore().value(self._task_parameters.pv_camera_length)
+                )
 
             # Event logic (skip non-matching codes)
             if self._task_parameters.event_logic:
@@ -573,9 +602,7 @@ class DrFindPeaksPyAlgos(Task):
                 offset = -min_val if min_val < 0 else 0.0
 
                 img_psqrt = psqrt_roundtrip_fracbits_gain_equalized(
-                    img,
-                    frac_bits=FRAC_BITS,
-                    offset=offset
+                    img, frac_bits=FRAC_BITS, offset=offset
                 )
 
             # Optional DR stage (per-panel)
@@ -605,14 +632,14 @@ class DrFindPeaksPyAlgos(Task):
                         metrics_writer.write_event_metrics(
                             event_id=event_number * P + p,
                             metrics=metrics,
-                            timestamp=timestamp_seconds + timestamp_nanoseconds * 1e-9
+                            timestamp=timestamp_seconds + timestamp_nanoseconds * 1e-9,
                         )
 
                         if self._task_parameters.dr_component == "S":
                             reconstructed_img[p] = dr_algo.sparse_
                         elif self._task_parameters.dr_component in ("L+S", "X_hat"):
                             reconstructed_img[p] = dr_algo.reconstruct()
-                        
+
                         else:
                             reconstructed_img[p] = panel
                     except Exception as e:
@@ -624,17 +651,20 @@ class DrFindPeaksPyAlgos(Task):
                         np.save(bad_img_path, panel)
                         print(f"Saved failed frame to {bad_img_path}")
                 d = reconstructed_img - original_img
-                print("max_abs_diff", float(np.nanmax(np.abs(d))), "nnz", int(np.sum(d != 0)))
+                print(
+                    "max_abs_diff",
+                    float(np.nanmax(np.abs(d))),
+                    "nnz",
+                    int(np.sum(d != 0)),
+                )
                 metrics_writer.maybe_write_debug_panels(
-                    event_id=event_number, 
+                    event_id=event_number,
                     timestamp=timestamp_seconds + timestamp_nanoseconds * 1e-9,
                     original_img=original_img,
                     reconstructed_img=reconstructed_img,
                 )
                 img = reconstructed_img
 
-            
-            
             # Initialize peak finder + writers once we have an image
             if alg is None:
                 det_shape: Tuple[int, ...] = img.shape
@@ -658,7 +688,9 @@ class DrFindPeaksPyAlgos(Task):
 
                 if self._task_parameters.mask_file is not None:
                     with h5py.File(self._task_parameters.mask_file, "r") as hdffh:
-                        loaded_mask: NDArray[numpy.int64] = hdffh["entry_1/data_1/mask"][:]
+                        loaded_mask: NDArray[numpy.int64] = hdffh[
+                            "entry_1/data_1/mask"
+                        ][:]
                         mask *= loaded_mask.astype(numpy.uint16)
 
                 file_writer: CxiWriter = CxiWriter(
@@ -714,13 +746,18 @@ class DrFindPeaksPyAlgos(Task):
             if (peaks.shape[0] >= self._task_parameters.min_peaks) and (
                 peaks.shape[0] <= self._task_parameters.max_peaks
             ):
-                if self._task_parameters.compression is not None and libpressio_config is not None:
+                if (
+                    self._task_parameters.compression is not None
+                    and libpressio_config is not None
+                ):
                     from libpressio import PressioCompressor  # type: ignore
 
-                    libpressio_config_with_peaks = add_peaks_to_libpressio_configuration(
-                        libpressio_config, peaks
+                    libpressio_config_with_peaks = (
+                        add_peaks_to_libpressio_configuration(libpressio_config, peaks)
                     )
-                    compressor = PressioCompressor.from_config(libpressio_config_with_peaks)
+                    compressor = PressioCompressor.from_config(
+                        libpressio_config_with_peaks
+                    )
                     compressed_img = compressor.encode(img)
                     decompressed_img = numpy.zeros_like(img)
                     _ = compressor.decode(compressed_img, decompressed_img)
@@ -752,18 +789,19 @@ class DrFindPeaksPyAlgos(Task):
             if peaks.shape[0] >= self._task_parameters.min_peaks:
                 powder_hits = numpy.maximum(powder_hits, img.reshape(-1, img.shape[-1]))
             else:
-                powder_misses = numpy.maximum(powder_misses, img.reshape(-1, img.shape[-1]))
-
+                powder_misses = numpy.maximum(
+                    powder_misses, img.reshape(-1, img.shape[-1])
+                )
 
         summary_metrics = {
-                "total_events": num_events,
-                "total_hits": num_hits,
-                "hit_rate": num_hits / num_events if num_events > 0 else 0,
-                "empty_images": num_empty_images,
-            }
+            "total_events": num_events,
+            "total_hits": num_hits,
+            "hit_rate": num_hits / num_events if num_events > 0 else 0,
+            "empty_images": num_empty_images,
+        }
         metrics_writer.write_summary(summary_metrics)
         metrics_writer.close()
-        
+
         if num_empty_images != 0 and ENABLE_ELOG:
             msg: Message = Message(
                 contents=f"Rank {ds.rank} encountered {num_empty_images} empty images."
@@ -776,11 +814,15 @@ class DrFindPeaksPyAlgos(Task):
             mask=mask,
         )
 
-        file_writer.optimize_and_close_file(num_hits=num_hits, max_peaks=self._task_parameters.max_peaks)
+        file_writer.optimize_and_close_file(
+            num_hits=num_hits, max_peaks=self._task_parameters.max_peaks
+        )
 
         COMM_WORLD.Barrier()
 
-        num_hits_per_rank: List[int] = cast(List[int], COMM_WORLD.gather(num_hits, root=0))
+        num_hits_per_rank: List[int] = cast(
+            List[int], COMM_WORLD.gather(num_hits, root=0)
+        )
         num_hits_total: int = cast(int, COMM_WORLD.reduce(num_hits, SUM))
         num_events_total: int = cast(int, COMM_WORLD.reduce(num_events, SUM))
 
@@ -795,18 +837,29 @@ class DrFindPeaksPyAlgos(Task):
                 n_hits_total=num_hits_total,
             )
 
-            with open(Path(self._task_parameters.outdir) / f"peakfinding{tag}.summary", "w") as f:
+            with open(
+                Path(self._task_parameters.outdir) / f"peakfinding{tag}.summary", "w"
+            ) as f:
                 print(f"Number of events processed: {num_events_total}", file=f)
                 print(f"Number of hits found: {num_hits_total}", file=f)
-                print(f"Fractional hit rate: {(num_hits_total/num_events_total):.2f}", file=f)
+                print(
+                    f"Fractional hit rate: {(num_hits_total/num_events_total):.2f}",
+                    file=f,
+                )
                 print(f"No. hits per rank: {num_hits_per_rank}", file=f)
 
             with h5py.File(master_fname, "r") as f:
-                final_powder_hits: NDArray[numpy.float64] = f["entry_1/data_1/powderHits"][:]
-                final_powder_misses: NDArray[numpy.float64] = f["entry_1/data_1/powderMisses"][:]
+                final_powder_hits: NDArray[numpy.float64] = f[
+                    "entry_1/data_1/powderHits"
+                ][:]
+                final_powder_misses: NDArray[numpy.float64] = f[
+                    "entry_1/data_1/powderMisses"
+                ][:]
 
             if ENABLE_ELOG:
-                powder_plots: pn.Tabs = self._create_powder_plots(det, final_powder_hits, final_powder_misses)
+                powder_plots: pn.Tabs = self._create_powder_plots(
+                    det, final_powder_hits, final_powder_misses
+                )
                 text_summary: Dict[str, str] = {
                     "Number of events processed": str(num_events_total),
                     "Number of hits found": str(num_hits_total),
@@ -814,7 +867,10 @@ class DrFindPeaksPyAlgos(Task):
                 }
                 self._result.summary = (
                     text_summary,
-                    ElogSummaryPlots(f"r{self._task_parameters.lute_config.run}/powders", powder_plots),
+                    ElogSummaryPlots(
+                        f"r{self._task_parameters.lute_config.run}/powders",
+                        powder_plots,
+                    ),
                 )
 
             with open(Path(self._task_parameters.out_file), "w") as f:
@@ -824,10 +880,14 @@ class DrFindPeaksPyAlgos(Task):
         super()._post_run()
         self._result.task_status = TaskStatus.COMPLETED
 
-    def _assemble_image(self, det: Detector, img: NDArray[numpy.float64]) -> NDArray[numpy.float64]:
+    def _assemble_image(
+        self, det: Detector, img: NDArray[numpy.float64]
+    ) -> NDArray[numpy.float64]:
         geom: GeometryAccess = det.geometry(self._task_parameters.lute_config.run)
         tmp: Tuple[NDArray[numpy.uint64], ...] = geom.get_pixel_coord_indexes()
-        pixel_map: NDArray[numpy.uint64] = numpy.zeros(tmp[0].shape[1:] + (2,), dtype=numpy.uint64)
+        pixel_map: NDArray[numpy.uint64] = numpy.zeros(
+            tmp[0].shape[1:] + (2,), dtype=numpy.uint64
+        )
         pixel_map[..., 0] = tmp[0][0]
         pixel_map[..., 1] = tmp[1][0]
         unflattened_img: NDArray[numpy.float64] = img.reshape(pixel_map.shape[:-1])
@@ -843,19 +903,27 @@ class DrFindPeaksPyAlgos(Task):
         powder_hits: NDArray[numpy.float64],
         powder_misses: NDArray[numpy.float64],
     ) -> Any:
-        self._task_parameters = cast(DrFindPeaksPyAlgosParameters, self._task_parameters)
+        self._task_parameters = cast(
+            DrFindPeaksPyAlgosParameters, self._task_parameters
+        )
 
         from mpi4py import MPI
+
         if MPI.COMM_WORLD.Get_rank() != 0:
             return None
 
         import holoviews as hv  # type: ignore
-        import panel as pn      # type: ignore
+        import panel as pn  # type: ignore
+
         hv.extension("bokeh")
         pn.extension()
 
-        assembled_powder_hits: NDArray[numpy.float64] = self._assemble_image(det, powder_hits)
-        assembled_powder_misses: NDArray[numpy.float64] = self._assemble_image(det, powder_misses)
+        assembled_powder_hits: NDArray[numpy.float64] = self._assemble_image(
+            det, powder_hits
+        )
+        assembled_powder_misses: NDArray[numpy.float64] = self._assemble_image(
+            det, powder_misses
+        )
 
         grid_hits: pn.GridSpec = pn.GridSpec(
             sizing_mode="stretch_both",
@@ -864,10 +932,15 @@ class DrFindPeaksPyAlgos(Task):
         )
         dim: hv.Dimension = hv.Dimension(
             ("image", "Hits"),
-            range=(numpy.nanpercentile(assembled_powder_hits, 1), numpy.nanpercentile(assembled_powder_hits, 99)),
+            range=(
+                numpy.nanpercentile(assembled_powder_hits, 1),
+                numpy.nanpercentile(assembled_powder_hits, 99),
+            ),
         )
         grid_hits[0, 0] = pn.Row(
-            hv.Image(assembled_powder_hits, vdims=[dim], name=dim.label).options(colorbar=True, cmap="rainbow")
+            hv.Image(assembled_powder_hits, vdims=[dim], name=dim.label).options(
+                colorbar=True, cmap="rainbow"
+            )
         )
 
         grid_misses: pn.GridSpec = pn.GridSpec(
@@ -877,10 +950,15 @@ class DrFindPeaksPyAlgos(Task):
         )
         dim = hv.Dimension(
             ("image", "Misses"),
-            range=(numpy.nanpercentile(assembled_powder_misses, 1), numpy.nanpercentile(assembled_powder_misses, 99)),
+            range=(
+                numpy.nanpercentile(assembled_powder_misses, 1),
+                numpy.nanpercentile(assembled_powder_misses, 99),
+            ),
         )
         grid_misses[0, 0] = pn.Row(
-            hv.Image(assembled_powder_misses, vdims=[dim], name=dim.label).options(colorbar=True, cmap="rainbow")
+            hv.Image(assembled_powder_misses, vdims=[dim], name=dim.label).options(
+                colorbar=True, cmap="rainbow"
+            )
         )
 
         tabs: pn.Tabs = pn.Tabs(grid_hits)

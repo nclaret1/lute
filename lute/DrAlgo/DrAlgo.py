@@ -9,9 +9,8 @@ from scipy.linalg import pinv, norm
 from typing import Tuple
 from scipy import sparse
 
-
-
 __all__ = ["DrAlgo"]
+
 
 class NotFittedError(Exception):
     pass
@@ -26,7 +25,6 @@ def _check_2d(X: npt.ArrayLike) -> npt.NDArray:
     if X.ndim != 2:
         raise ValueError(f"Expected 2D array, got {X.ndim}D.")
     return X
-
 
 
 class Factors(dict):
@@ -61,7 +59,7 @@ class DrAlgo(ABC):
         self._Xc_: Optional[npt.NDArray] = None
         self._X_orig_: Optional[np.ndarray] = None
 
-    #can actually use "DrAlgo" for forward reference
+    # can actually use "DrAlgo" for forward reference
     def fit(self, X: npt.ArrayLike, y: Any = None, **kwargs: Any) -> "DrAlgo":
         storage_ref = kwargs.pop("storage_ref", None)
 
@@ -96,10 +94,10 @@ class DrAlgo(ABC):
         self._check_fitted_shapes(Xc)
         self.factors_ = self.factors()
         return self
-    
+
     @abstractmethod
     def _fit_core(self, Xc: npt.NDArray, **kwargs: Any) -> None:
-        #should set self.factors, self.errors, e=self.timers
+        # should set self.factors, self.errors, e=self.timers
         raise NotImplementedError
 
     def reconstruct(self) -> npt.NDArray:
@@ -107,12 +105,11 @@ class DrAlgo(ABC):
         f = self.factors()
         return self._reconstruct(f)
 
-
     @abstractmethod
     def _reconstruct(self, f) -> npt.NDArray:
-        #if {"L", "S"} <= f.keys():
-            #return f["L"] + f["S"]
-        #raise RuntimeError
+        # if {"L", "S"} <= f.keys():
+        # return f["L"] + f["S"]
+        # raise RuntimeError
         raise NotImplementedError
 
     @abstractmethod
@@ -126,7 +123,7 @@ class DrAlgo(ABC):
             raise NotFittedError from e
         if not isinstance(f, dict) or not f:
             raise NotFittedError
-        
+
     def _check_fitted_shapes(self, Xc: npt.NDArray) -> None:
         f = self.factors()
         m, n = Xc.shape
@@ -134,7 +131,7 @@ class DrAlgo(ABC):
             raise RuntimeError
         if "S" in f and f["S"].shape != (m, n):
             raise RuntimeError
-        if {"C","U","R"} <= f.keys():
+        if {"C", "U", "R"} <= f.keys():
             rC = f["C"].shape[1]
             rR = f["R"].shape[0]
             if f["C"].shape[0] != m or f["R"].shape[1] != n or f["U"].shape != (rC, rR):
@@ -207,7 +204,6 @@ class DrAlgo(ABC):
         den = (mu_x**2 + mu_y**2 + C1) * (var_x + var_y + C2)
         return float(num / den)
 
-
     def _autocorr(self, x: np.ndarray, max_lag: int = 200) -> np.ndarray:
         x = x.ravel().astype(float, copy=False)
         x -= x.mean()
@@ -215,7 +211,7 @@ class DrAlgo(ABC):
         fft = np.fft.fft(x, n=2 * n)
         ac = np.fft.ifft(fft * np.conj(fft)).real[:n]
         return (ac / ac[0])[: max_lag + 1]
-        
+
     def compute_metrics(self, max_autocorr_lag: int = 200) -> Dict[str, Any]:
         self._ensure_fitted()
         if self._Xc_ is None:
@@ -251,20 +247,21 @@ class DrAlgo(ABC):
                 V_r = np.asarray(Vt_svd[:r, :].T, dtype=np.float32, order="C")
                 s_r = np.asarray(s_svd[:r], dtype=np.float32, order="C")
 
-
             storage["U_storage_bytes"] = int(U_r.nbytes)
             storage["V_storage_bytes"] = int(V_r.nbytes)
-            storage["Sigma_storage_bytes"] = int(s_r.nbytes) 
+            storage["Sigma_storage_bytes"] = int(s_r.nbytes)
 
-            L_bytes = storage["U_storage_bytes"] + storage["V_storage_bytes"] + storage["Sigma_storage_bytes"]
+            L_bytes = (
+                storage["U_storage_bytes"]
+                + storage["V_storage_bytes"]
+                + storage["Sigma_storage_bytes"]
+            )
             storage["L_storage_bytes"] = L_bytes
 
         if "S" in f:
             S_csr = sparse.csr_matrix(f["S"])
             storage["S_storage_bytes"] = (
-                S_csr.data.nbytes +
-                S_csr.indices.nbytes +
-                S_csr.indptr.nbytes
+                S_csr.data.nbytes + S_csr.indices.nbytes + S_csr.indptr.nbytes
             )
 
             denom = storage.get("L_storage_bytes", 0) + storage["S_storage_bytes"]
@@ -304,15 +301,14 @@ class DrAlgo(ABC):
         }
 
         self.metrics_ = metrics
-        #print("L rank:", U_r.shape[1] if "L" in f else "N/A")
-        #print("S sparsity: {:.4f} %".format(
-            #100 * np.count_nonzero(f["S"]) / f["S"].size if "S" in f else 0.0
-        #))
-        #print("S_csr.data.nbytes:", storage.get("S_storage_bytes", 0), "inferred sparsity: {:.4f} %".format(
-            #100 * (f["S"].size - (storage.get("S_storage_bytes", 0) / (f["S"].dtype.itemsize * 2))) / f["S"].size if "S" in f else 0.0
-        #))
+        # print("L rank:", U_r.shape[1] if "L" in f else "N/A")
+        # print("S sparsity: {:.4f} %".format(
+        # 100 * np.count_nonzero(f["S"]) / f["S"].size if "S" in f else 0.0
+        # ))
+        # print("S_csr.data.nbytes:", storage.get("S_storage_bytes", 0), "inferred sparsity: {:.4f} %".format(
+        # 100 * (f["S"].size - (storage.get("S_storage_bytes", 0) / (f["S"].dtype.itemsize * 2))) / f["S"].size if "S" in f else 0.0
+        # ))
         return metrics
-
 
 
 class LSDrAlgo(DrAlgo):
@@ -325,7 +321,7 @@ class LSDrAlgo(DrAlgo):
         if self.low_rank_ is None or self.sparse_ is None:
             raise NotFittedError
         return Factors(L=self.low_rank_, S=self.sparse_)
-    
+
     def _reconstruct(self, f: Factors) -> npt.NDArray:
         return f["L"] + f["S"]
 
@@ -338,17 +334,15 @@ class IrcurAlgo(DrAlgo):
         self.R_: Optional[npt.NDArray] = None
 
     def factors(self) -> Factors:
-        if (self.C_ is None
-            or self.U_ is None 
-            or self.R_ is None
-            ):
+        if self.C_ is None or self.U_ is None or self.R_ is None:
             raise NotFittedError
         return Factors(C=self.C_, U=self.U_, R=self.R_)
 
     def _reconstruct(self, f: Factors) -> npt.NDArray:
         u_pinv = pinv(f["U"])
         return f["C"] @ u_pinv @ f["R"]
-    
+
+
 class XhatDrAlgo(DrAlgo):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -362,4 +356,3 @@ class XhatDrAlgo(DrAlgo):
 
     def _reconstruct(self, f: Factors) -> npt.NDArray:
         return f["X_hat"]
-    
