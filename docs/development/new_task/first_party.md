@@ -214,9 +214,51 @@ LUTE_SIGNALS: Set[str] = {
     "TASK_DONE",
     "TASK_CANCELLED",
     "TASK_RESULT",
+    "TASK_REQUEST",
+    "TASK_RESPONSE",
+    "TASK_METADATA",
 }
 ```
 Each of these signals is associated with a hook on the `Executor`-side. They are for the most part used by base classes; however, you can choose to make use of them manually as well.
+
+
+### Advanced use case: IPC with other `Task`s
+
+When using `maestro` as a backend workflow manager (support for the below is not yet available for other backends), it is possible to communicate with other **managed** `Task`s that are running in parallel.
+
+Specifically, `maestro` supports a number of REST API endpoints to facilitate this:
+
+- `GET /tasks` : Get a list of all running **managed** `Task`s and any metadata that they have published.
+- `GET/POST /rpc?task=....` : Remote procedure call for the provided `task` as the query parameter.
+
+
+While knowledge of these APIs is useful, from the perspective of `Task` code, direct calls to them is not needed. All `Task` communication goes via the `Executor`. A number of methods have been provided in the base `Task` class in order to facilitate communication.
+
+- `task_request(for_task: str, request: Any, wait_for_resp: bool = True)`: Send a `request` to `for_task`. You can either block (by setting `wait_for_resp` to `True`) or check back later.
+- `get_running_tasks() -> Message`: Get a current list of running `Task`s and any metadata they have published already.
+    - The data will be returned in the following format (in `Message.contents`). The dictionary will have a `managed_tasks` key, which has a list of dictionaries for each running **managed** `Task`. There will always be a `name`, `status` and `task` key. Any other keys can change.
+
+```
+{
+    "managed_tasks": [
+        {
+            "name": "managed_task_name1",
+            "status": "RUNNING",
+            "task": "task_name1",
+            "meta_key1": "val1",
+        }, # May have other keys
+        {
+            "name": "managed_task_name2",
+            "status": "RUNNING",
+            "task": "task_name2",
+            "meta_key2": "val2",
+        }, # May have other keys
+}
+```
+
+- `publish_metadata(metadata: Dict[str, Any])`: Publish a dictionary that will be attached to the metadata stored for the running `Task`. It will then be retrievable by the other `Task`s if they call `get_running_tasks`.
+
+Note: To use metadata as a means of communication between the various `Task`s, you must know what the other `Task` will be publishing. Currently, there are only a few standardized sets of metadata which include hostnames. Beyond this, it is all `Task`-specific.
 
 ## Making your `Task` available
 Once the `Task` has been written, it needs to be made available for import. Since different `Task`s can have conflicting dependencies and environments, this is managed through an import function. When the `Task` is done, or ready for testing, a condition is added to `lute.tasks.__init__.import_task`. For example, assume the `Task` is called `RunXASAnalysis` and it's defined in a module called `xas.py`, we would add the following lines to the `import_task` function:

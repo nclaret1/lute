@@ -34,20 +34,22 @@ __all__ = [
 ]
 __author__ = "Gabriel Dorlhiac"
 
+import io
 import logging
 import os
 import pickle
+import select
 import socket
 import subprocess
 import sys
-import time
 import threading
-import warnings
+import time
 import queue
+import warnings
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Optional, Set, List, Union, Tuple, cast
+from typing import Any, ClassVar, Dict, IO, List, Optional, Set, Tuple, Union, cast
 from typing_extensions import Self
 
 LUTE_SIGNALS: Set[str] = {
@@ -59,6 +61,9 @@ LUTE_SIGNALS: Set[str] = {
     "TASK_CANCELLED",
     "TASK_RESULT",
     "TASK_LOG",
+    "TASK_REQUEST",
+    "TASK_RESPONSE",
+    "TASK_METADATA",
 }
 
 if __debug__:
@@ -115,6 +120,37 @@ class Message:
     signal: Optional[str] = None
 
 
+@dataclass
+class TaskRequest:
+    request: Any
+    for_task: Optional[str] = None
+    for_manager: bool = False
+
+
+@dataclass
+class TaskResponse:
+    response: Optional[Any] = None
+    for_task: Optional[str] = None
+
+
+@dataclass
+class TaskRequestMessage(Message):
+    contents: TaskRequest
+    signal: str = "TASK_REQUEST"
+
+
+@dataclass
+class TaskResponseMessage(Message):
+    contents: TaskResponse
+    signal: str = "TASK_RESPONSE"
+
+
+@dataclass
+class TaskMetadataMessage(Message):
+    contents: Dict[str, Any]
+    signal: str = "TASK_METADATA"
+
+
 class Communicator(ABC):
     def __init__(self, party: Party = Party.TASK, use_pickle: bool = True) -> None:
         """Abstract Base Class for IPC Communicator objects.
@@ -130,12 +166,14 @@ class Communicator(ABC):
         self.desc = "Communicator abstract base class."
 
     @abstractmethod
-    def read(self, proc: subprocess.Popen) -> Message:
+    def read(
+        self, proc: Optional[subprocess.Popen], wait: Optional[float] = None
+    ) -> Message:
         """Method for reading data through the communication mechanism."""
         ...
 
     @abstractmethod
-    def write(self, msg: Message) -> None:
+    def write(self, msg: Message, proc: Optional[subprocess.Popen] = None) -> None:
         """Method for sending data through the communication mechanism."""
         ...
 
@@ -196,55 +234,90 @@ class PipeCommunicator(Communicator):
         super().__init__(party=party, use_pickle=use_pickle)
         self.desc = "Communicates through stderr and stdout using pickle."
 
-    def read(self, proc: subprocess.Popen) -> Message:
-        """Read from stdout and stderr.
+    def read(
+        self, proc: Optional[subprocess.Popen] = None, wait: Optional[float] = None
+    ) -> Message:
+        """Read from stdout and stderr (Executor) or stdin (Task).
 
         Args:
-            proc (subprocess.Popen): The process to read from.
+            proc (subprocess.Popen): The process to read from (Executor side).
+
+            wait (Optional[float]): Optionally wait for data for the specified time.
+                By default all operations are non-blocking, by setting wait to some
+                non-zero value, the Communicator will block for that amount of time.
 
         Returns:
             msg (Message): The message read, containing contents and signal.
         """
         signal: Optional[str]
-        contents: Optional[str]
-        raw_signal: Optional[bytes] = (
-            proc.stderr.read() if proc.stderr is not None else None
-        )
-        raw_contents: Optional[bytes] = (
-            proc.stdout.read() if proc.stdout is not None else None
-        )
+        contents: Optional[Any]
+        raw_signal: Optional[bytes]
+        raw_contents: Optional[bytes]
+
+        if wait is not None:
+            wait_on: List[IO]
+            if self._party == Party.EXECUTOR:
+                assert proc is not None
+                wait_on = [fd for fd in [proc.stderr, proc.stdin] if fd is not None]
+            else:
+                wait_on = [sys.stdin]
+            # We're ignoring the output here to not rewrite the rest of the code
+            select.select(wait_on, [], [], wait)
+
+        if self._party == Party.EXECUTOR:
+            assert proc is not None
+            raw_signal = proc.stderr.read() if proc.stderr is not None else None
+            raw_contents = proc.stdout.read() if proc.stdout is not None else None
+        else:
+            # Task side - reading from stdin which Executor writes to.
+            # Do not currently have a split like Executor using stderr/stdout
+            raw_signal = None
+            try:
+                raw_contents = sys.stdin.buffer.read()
+            except (AttributeError, io.UnsupportedOperation):
+                # Fallback if stdin is not a buffer or closed
+                raw_contents = None
+
         if raw_signal is not None:
             try:
                 signal = raw_signal.decode()
             except UnicodeDecodeError:
-                logger.error("PipeCommunicator unable to decode signal.")
-                signal = None
+                logger.debug(
+                    "PipeCommunicator - Stderr signal contains non-UTF-8 bytes. "
+                    "Decoding with errors='replace'."
+                )
+                signal = raw_signal.decode(errors="replace")
         else:
-            signal = raw_signal
+            signal = None
+
         if raw_contents:
             if self._use_pickle:
                 try:
                     contents = pickle.loads(raw_contents)
+                    if self._party == Party.TASK and isinstance(contents, Message):
+                        # Executor writes a whole Message object to stdin
+                        signal = contents.signal
+                        contents = contents.contents
                 except (
                     pickle.UnpicklingError,
                     ValueError,
                     EOFError,
                     ModuleNotFoundError,
                 ):
-                    logger.debug("PipeCommunicator (Executor) - Set _use_pickle=False")
+                    logger.debug("PipeCommunicator - Set _use_pickle=False")
                     self._use_pickle = False
                     contents = self._safe_unpickle_decode(raw_contents)
             else:
                 try:
                     contents = raw_contents.decode()
                 except UnicodeDecodeError:
-                    logger.debug("PipeCommunicator (Executor) - Set _use_pickle=True")
+                    logger.debug("PipeCommunicator - Set _use_pickle=True")
                     self._use_pickle = True
                     contents = self._safe_unpickle_decode(raw_contents)
         else:
             contents = None
 
-        if signal and signal not in LUTE_SIGNALS:
+        if self._party == Party.EXECUTOR and signal and signal not in LUTE_SIGNALS:
             # Some tasks write on stderr
             # If the signal channel has "non-signal" info, add it to
             # contents
@@ -320,15 +393,37 @@ class PipeCommunicator(Communicator):
                     contents = None
         return contents
 
-    def write(self, msg: Message) -> None:
-        """Write to stdout and stderr.
+    def write(self, msg: Message, proc: Optional[subprocess.Popen] = None) -> None:
+        """Write to stdout and stderr (Task) or proc.stdin (Executor).
 
          The signal component is sent to `stderr` while the contents of the
          Message are sent to `stdout`.
 
         Args:
             msg (Message): The Message to send.
+            proc (subprocess.Popen, optional): The process to write to (Executor side).
         """
+        if self._party == Party.EXECUTOR:
+            assert proc is not None
+            if proc.stdin is None:
+                logger.error("Attempted to write to process with no stdin pipe!")
+                return
+
+            if self._use_pickle:
+                # We don't have separate signal/content channels for reverse yet
+                # Just send the whole message object
+                data: bytes = pickle.dumps(msg)
+                proc.stdin.write(data)
+                proc.stdin.flush()
+            else:
+                if not isinstance(msg.contents, str) and msg.contents is not None:
+                    raise ValueError(f"Cannot send {type(msg.contents)} without pickle")
+                data_str: str = str(msg.contents or "")
+                proc.stdin.write(data_str)
+                proc.stdin.flush()
+            return
+
+        # Task side
         if self._use_pickle:
             signal: bytes
             if msg.signal:
@@ -361,6 +456,8 @@ class PipeCommunicator(Communicator):
                 )
             sys.stderr.write(raw_signal)
             sys.stdout.write(raw_contents)
+            sys.stderr.flush()
+            sys.stdout.flush()
 
 
 class SocketCommunicator(Communicator):
@@ -408,15 +505,15 @@ class SocketCommunicator(Communicator):
     machine and Executor machine.
     """
 
-    ACCEPT_TIMEOUT: float = 0.01
+    ACCEPT_TIMEOUT: ClassVar[float] = 0.01
     """
     Maximum time to wait to accept connections. Used by Executor-side.
     """
-    MSG_HEAD: bytes = b"MSG"
+    MSG_HEAD: ClassVar[bytes] = b"MSG"
     """
     Start signal of a message. The end of a message is indicated by MSG_HEAD[::-1].
     """
-    MSG_SEP: bytes = b";;;"
+    MSG_SEP: ClassVar[bytes] = b";;;"
     """
     Separator for parts of a message. Messages have a start, length, message and end.
     """
@@ -481,7 +578,9 @@ class SocketCommunicator(Communicator):
     # Read
     ############################################################################
 
-    def read(self, proc: subprocess.Popen) -> Message:
+    def read(
+        self, proc: Optional[subprocess.Popen] = None, wait: Optional[float] = None
+    ) -> Message:
         """Return a message from the queue if available.
 
         Socket(s) are continuously monitored, and read from when new data is
@@ -644,7 +743,7 @@ class SocketCommunicator(Communicator):
             assert isinstance(self._data_socket, socket.socket)
             self._data_socket.sendall(packed_msg)
 
-    def write(self, msg: Message) -> None:
+    def write(self, msg: Message, proc: Optional[subprocess.Popen] = None) -> None:
         """Send a single Message.
 
         The entire Message (signal and contents) is serialized and sent through

@@ -15,7 +15,6 @@ import enum
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Set, Tuple, TypedDict, Union
 
-
 LUTE_PARAMETER_CONFIG_KEYS: Dict[str, Any] = {
     # All Tasks
     "run_directory": {
@@ -72,7 +71,7 @@ def handle_field_attrs(self, *args, **kwargs):
     """"""
     for param_name, param_val in kwargs.items():
         setattr(self, param_name, param_val)
-        type(self)._dict[param_name] = param_val
+        self._dict[param_name] = param_val
 
 
 class RowIds(TypedDict):
@@ -109,7 +108,8 @@ class AnalysisHeader(ContainerBase):
     work_dir: str
 
     def __init__(self, schema: Dict[str, Any], *args, **kwargs):
-        type(self)._schema = schema
+        self._dict = {}
+        self._schema = schema
         handle_field_attrs(self, *args, **kwargs)
 
 
@@ -180,7 +180,8 @@ class TaskParameters(ContainerBase):
     _dict: Dict[str, Any] = {}
 
     def __init__(self, schema: Dict[str, Any], *args, **kwargs):
-        type(self)._schema = schema
+        self._schema = schema
+        self._dict = {}
         handle_field_attrs(self, *args, **kwargs)
 
     def schema(self):
@@ -227,7 +228,8 @@ class TemplateConfig:
     _schema: Dict[str, Any] = {}
 
     def __init__(self, schema: Dict[str, Any], *args, **kwargs):
-        type(self)._schema = schema
+        self._schema = schema
+        self._dict: Dict[str, Any] = {}
         handle_field_attrs(self, *args, **kwargs)
 
 
@@ -415,4 +417,9 @@ def construct_task_parameters(schema: Dict[str, Any], values: Dict[str, Any]) ->
         obj = obj_type(**fields_for_params)
     else:
         obj = obj_type(schema, **fields_for_params)
+
+    if hasattr(obj, "_dict"):
+        # This is messy - leftover from the object construction.
+        # TODO: The above process should be cleaned up at some point.
+        del obj._dict
     return obj

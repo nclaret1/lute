@@ -1,0 +1,18 @@
+task_name: "Tester"
+slurm_params: ""
+next:
+- task_name: "BinaryTester"
+  slurm_params: ""
+  next: []
+- task_name: "BinaryErrTester"
+  slurm_params: ""
+  next: []
+- task_name: "SocketTester"
+  slurm_params: ""
+  next:
+  - task_name: "WriteTester"
+    slurm_params: ""
+    next:
+    - task_name: "ReadTester"
+      slurm_params: ""
+      next: []

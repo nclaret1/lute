@@ -27,7 +27,7 @@ __author__ = "Gabriel Dorlhiac"
 
 import os
 from pathlib import Path
-from typing import Union, List, Optional, Dict, Any, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from pydantic import (
     BaseModel,
@@ -71,7 +71,7 @@ class SubmitSMDParameters(ThirdPartyParameters):
             )
 
         class ROIParams(BaseModel):
-            ROIs: Optional[List[List[List[int]]]] = Field(
+            ROI: Optional[List[List[List[int]]]] = Field(
                 description="Definition of ROIs, can define multiple."
             )
 
@@ -95,6 +95,40 @@ class SubmitSMDParameters(ThirdPartyParameters):
             tx: float = Field(0, description="Tilt in x, degrees")
 
             ty: float = Field(0, description="Tilt in y, degress")
+
+            ADU_per_Photon: float = Field(1.0, description="ADU per photon.")
+
+            phiBins: int = Field(1, description="Number of phi bins.")
+
+            qbin: float = Field(5e-3, description="Width of Q bin.")
+
+            thresRms: Optional[Union[int, float]] = Field(
+                None, description="Lower threshold in RMS."
+            )
+
+            thresADU: Optional[Union[int, float]] = Field(
+                None, description="Lower threshold in ADU."
+            )
+
+            thresADUhigh: Optional[Union[int, float]] = Field(
+                None, description="High threshold in ADU."
+            )
+
+            geomCorr: bool = Field(
+                True, description="Whether to apply geometric correction."
+            )
+
+            polCorr: bool = Field(
+                True, description="Whether to apply polarization correction."
+            )
+
+            userMask: Optional[str] = Field(
+                None,
+                description=(
+                    "Path to a numpy array (.npy) to use as a mask for azimuthal "
+                    "integration."
+                ),
+            )
 
         class AzIntPyFAIParams(BaseModel):
             class AiKwargs(BaseModel):
@@ -251,8 +285,27 @@ class SubmitSMDParameters(ThirdPartyParameters):
                 None, description="Corrections for each mask/ROI."
             )
 
+        class PressioCompression(BaseModel):
+            class Sz3CompressorArgs(BaseModel):
+                abs_error_bound: Union[int, float] = Field(
+                    default=10,
+                    description="The bound on absolute error for the compression.",
+                )
+
+            compressor_id: Literal["sz3"] = Field(
+                default=None, description="The type of compressor to use."
+            )
+            compressor_args: Sz3CompressorArgs = Field(
+                default=Sz3CompressorArgs(),
+                description="Compressor specific arguments.",
+            )
+
         detnames: Optional[List[str]] = Field(
             None, description="List of detectors to process."
+        )
+
+        xdetectors: Optional[List[str]] = Field(
+            None, description="List of detectors to exclude from loading by psana."
         )
 
         integrating_detectors: Optional[List[str]] = Field(
@@ -261,11 +314,31 @@ class SubmitSMDParameters(ThirdPartyParameters):
         )
 
         epicsPV: Optional[List[Union[str, Tuple[str, str]]]] = Field(
-            None, description="List of PVs to save once per event."
+            None,
+            description=(
+                "LCLS1: List of PVs to save once per event. The lists are either "
+                "PV names, alias names, or tuples of (PV name, alias name).\n"
+                "LCLS2: List of PVs to grab from the ARCHIVER. The lists are either "
+                "PV names or tuples of (PV name, alias name).\n"
+                "NOTE: It appears to be shot-to-shot, but this is for convenience only."
+            ),
+        )
+
+        epicsArchFilePV: Optional[List[Union[str, Tuple[str, str]]]] = Field(
+            None,
+            description=(
+                "List PVs to save shot-to-shot. NOTE: It appears to be shot-to-shot, "
+                "but this is for convenience only. The lists are either PV names, "
+                "alias names, or tuples of (PV name, alias name)."
+            ),
         )
 
         epicsOncePV: Optional[List[Union[str, Tuple[str, str]]]] = Field(
-            None, description="List of PVs to save once per run."
+            None,
+            description=(
+                "List of PVs to save once per run.The lists are either "
+                "PV names, alias names, or tuples of (PV name, alias name)."
+            ),
         )
 
         ttCalib: Optional[List[float]] = Field(
@@ -281,7 +354,7 @@ class SubmitSMDParameters(ThirdPartyParameters):
             None, description="Integrating detector configuration. LCLS2 only."
         )
 
-        getROIs: Optional[Dict[str, ROIParams]] = Field(
+        getROIs: Optional[Dict[str, List[ROIParams]]] = Field(
             None, description="Dictionary of ROI parameters by detector."
         )
 
@@ -320,6 +393,19 @@ class SubmitSMDParameters(ThirdPartyParameters):
             description="Dictionary of auto-correlation parameters by detector.",
         )
 
+        getPressioCompression: Optional[Dict[str, PressioCompression]] = Field(
+            None, description="Per detector compression arguments."
+        )
+
+        detSumAlgos: Optional[Dict[str, List[str]]] = Field(
+            None,
+            description=(
+                "Detector sum algorithms. Can add a key for `all` to apply the algorithm "
+                "to all detectors, in addition to providing algorithms for each detector "
+                "individually."
+            ),
+        )
+
     _set_producer_template_parameters = template_parameter_validator(
         "producer_parameters"
     )
@@ -330,8 +416,15 @@ class SubmitSMDParameters(ThirdPartyParameters):
         description="Number of processes",
         flag_type="-",
     )
-    map_by: str = Field(
-        "core", description="MPI rank mapping.", flag_type="--", rename_param="map-by"
+    # This will interfere with affinities set by executor -- need smarter handling
+    map_by: Optional[str] = Field(
+        None, description="MPI rank mapping.", flag_type="--", rename_param="map-by"
+    )
+    bind_to: Optional[str] = Field(
+        None,
+        description="MPI rank to resource binding.",
+        flag_type="--",
+        rename_param="bind-to",
     )
     p_arg1: str = Field(
         "python", description="Executable to run with mpi (i.e. python).", flag_type=""
@@ -356,6 +449,11 @@ class SubmitSMDParameters(ThirdPartyParameters):
         flag_type="--",
     )
     stn: NonNegativeInt = Field(0, description="Hutch endstation.", flag_type="--")
+    psdm_dir: Optional[str] = Field(
+        None,
+        description="Optionally override SIT_PSDM_DATA.",
+        flag_type="--",
+    )
     config: Optional[str] = Field(
         None,
         description="Alternative config file to use for producer configuration",
@@ -450,7 +548,20 @@ class SubmitSMDParameters(ThirdPartyParameters):
             hutch: str = exp[:3]
             base_path: str = f"/sdf/data/lcls/ds/{hutch}/{exp}/results/smalldata_tools"
             path: str
-            if hutch.lower() in ("cxi", "mec", "xcs", "xpp"):
+            is_daq2: bool
+            if "psdm_dir" in values and values["psdm_dir"]:
+                # Assume we are only overriding SIT_PSDM_DATA if using converted xtc2
+                is_daq2 = True
+            else:
+                try:
+                    import psana  # type: ignore
+
+                    _ = psana.xtc_version
+                    # xtc_version fails in psana1
+                    is_daq2 = True
+                except AttributeError:
+                    is_daq2 = False
+            if not is_daq2:
                 path = f"{base_path}/lcls1_producers/smd_producer.py"
             else:
                 path = f"{base_path}/lcls2_producers/smd_producer.py"
@@ -471,17 +582,21 @@ class SubmitSMDParameters(ThirdPartyParameters):
             else:
                 cfg = str(Path(values["producer"]).parent / f"prod_config_{hutch}.py")
             lute_template_cfg.output_path = cfg
-            # Try using xtc_version now available in psana2 to figure out lcls1
-            # or lcls2
             is_daq2: bool
-            try:
-                import psana  # type: ignore
-
-                _ = psana.xtc_version
-                # xtc_version fails in psana1
+            if "psdm_dir" in values and values["psdm_dir"]:
+                # Assume we are only overriding SIT_PSDM_DATA if using converted xtc2
                 is_daq2 = True
-            except AttributeError:
-                is_daq2 = False
+            else:
+                # Try using xtc_version now available in psana2 to figure out lcls1
+                # or lcls2
+                try:
+                    import psana  # type: ignore
+
+                    _ = psana.xtc_version
+                    # xtc_version fails in psana1
+                    is_daq2 = True
+                except AttributeError:
+                    is_daq2 = False
             if not is_daq2:
                 lute_template_cfg.template_name = "smd1_prod_config_template.py"
             else:

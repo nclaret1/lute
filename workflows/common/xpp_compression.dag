@@ -1,0 +1,7 @@
+!LUTE_DAG
+task_name: "Xtc1to2Converter"
+slurm_params: ""
+next:
+- task_name: "SmallDataProducerXpp"
+  slurm_params: "--nodes=1 --tasks=120 --partition=milano --account=lcls:prjdat21"
+  next: []

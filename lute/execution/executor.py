@@ -23,40 +23,47 @@ Exceptions
 __all__ = ["BaseExecutor", "Executor", "MPIExecutor"]
 __author__ = "Gabriel Dorlhiac"
 
-import sys
+import copy
 import logging
-import subprocess
-import time
 import os
+import re
+import requests
+import shutil
 import signal
+import subprocess
+import sys
+import time
+import warnings
+from abc import ABC, abstractmethod
 from typing import (
-    overload,
-    Dict,
-    Callable,
-    List,
-    Optional,
     Any,
-    Tuple,
+    Callable,
+    ClassVar,
+    Dict,
+    List,
     Literal,
+    Optional,
+    Protocol,
+    Set,
+    Tuple,
+    Type,
     Union,
     cast,
-    Protocol,
-    Type,
+    overload,
 )
 from typing_extensions import TypedDict, TypeAlias
-from abc import ABC, abstractmethod
-import warnings
-import copy
-import re
 
 from lute.execution.logging import get_logger
 from lute.execution.ipc import (
-    Party,
+    Communicator,
+    LUTE_SIGNALS,
     Message,
+    Party,
     PipeCommunicator,
     SocketCommunicator,
-    LUTE_SIGNALS,
-    Communicator,
+    TaskMetadataMessage,
+    TaskRequest,
+    TaskRequestMessage,
 )
 from lute.tasks.dataclasses import (
     DescribedAnalysis,
@@ -129,6 +136,7 @@ class ExecutorHooks:
     task_cancelled: Hook
     task_result: Hook
     task_log: Hook
+    task_request: Hook
 
 
 class BaseExecutor(ABC):
@@ -157,7 +165,7 @@ class BaseExecutor(ABC):
         execute_task(): Run the task as a subprocess.
     """
 
-    Hooks: Type[ExecutorHooks] = ExecutorHooks
+    Hooks: ClassVar[Type[ExecutorHooks]] = ExecutorHooks
 
     def __init__(
         self,
@@ -203,6 +211,67 @@ class BaseExecutor(ABC):
         self._delayed_update_env_args: Optional[
             Tuple[Union[Dict[str, str], Callable[[], Dict[str, str]]], str]
         ] = None
+        self._m_task_name: str = ""
+
+        # Check to see if we are running from the Slurm WF manager
+        # It passes us a URL for status updates
+        self._lute_manager_url: Optional[str] = os.getenv("LUTE_MANAGER_URL")
+
+    @property
+    def task_name(self) -> str:
+        return self._analysis_desc.task_result.task_name
+
+    @task_name.setter
+    def task_name(self, new_name: str) -> None:
+        self._analysis_desc.task_result.task_name = new_name
+
+    @property
+    def managed_task_name(self) -> str:
+        return self._m_task_name
+
+    def _report_to_manager(
+        self,
+        end_point: str,
+        json_data: Optional[Dict[str, str]] = None,
+        method: str = "POST",
+    ) -> Any:
+        try:
+            func = getattr(requests, method.lower())
+        except AttributeError:
+            logger.error(f"Unable to send an HTTP request of type {method}")
+            return
+
+        # Set a timeout so we don't hang if the workflow manager dies
+        timeout: float = 5.0
+        try:
+            resp: requests.models.Response
+            if json_data is not None:
+                resp = func(
+                    f"http://{self._lute_manager_url}/{end_point}",
+                    json=json_data,
+                    timeout=timeout,
+                )
+            else:
+                resp = func(
+                    f"http://{self._lute_manager_url}/{end_point}", timeout=timeout
+                )
+
+            if hasattr(resp, "json"):
+                try:
+                    good_json: Any = resp.json()
+                    return good_json
+                except requests.JSONDecodeError:
+                    # logger.debug("Bad json.")
+                    # Don't know if we want to check this?
+                    # Probably available via headers whether it should be decoded
+                    # as json
+                    ...
+            if hasattr(resp, "content"):
+                return resp.content
+        except requests.ConnectTimeout:
+            logger.error(
+                f"HTTP request to workflow manager timed out after {timeout} seconds!"
+            )
 
     def add_tasklet(
         self,
@@ -379,16 +448,17 @@ class BaseExecutor(ABC):
             env (Dict[str, str]): A dictionary of "VAR":"VALUE" pairs of
                 environment variables to be added to the subprocess environment.
                 If any variables already exist, the new variables will
-                overwrite them (except PATH, see below).
+                overwrite them (except PATH and PYTHONPATH, see below).
 
-            update_path (str): If PATH is present in the new set of variables,
-                this argument determines how the old PATH is dealt with. There
-                are three options:
-                * "prepend" : The new PATH values are prepended to the old ones.
-                * "append" : The new PATH values are appended to the old ones.
-                * "overwrite" : The old PATH is overwritten by the new one.
-                "prepend" is the default option. If PATH is not present in the
-                current environment, the new PATH is used without modification.
+            update_path (str): If PATH and/or PYTHONPATH are present in the new
+                set of variables, this argument determines how the old value is
+                dealt with. There are three options:
+                * "prepend" : The new values are prepended to the old ones.
+                * "append" : The new values are appended to the old ones.
+                * "overwrite" : The old value is overwritten by the new one.
+                "prepend" is the default option. If PATH and/or PYTHONPATH is not
+                present in the current environment, the new PATH is used without
+                modification.
         """
         ...
 
@@ -419,16 +489,16 @@ class BaseExecutor(ABC):
             env (Union[Dict[str, str], Callable[[],Dict[str, str]]]): If a dictionary,
                 it contains a series of "VAR":"VALUE" pairs of environment variables to
                 be added to the subprocess environment. If any variables already exist,
-                the new variables will overwrite them (except PATH, see below). If a
-                callable, a managed-Task specific function which returns a dictionary
+                the new variables will overwrite them (except PATH/PYTHONPATH, see below).
+                If a callable, a managed-Task specific function which returns a dictionary
                 of environment variables to include in the Task environment. This function
                 can implement more complex logic to determine values for the specific
                 environment variables. If it is a callable, the `update_path` argument
                 to this method is ignored.
 
-            update_path (str): If PATH is present in the new set of variables,
-                this argument determines how the old PATH is dealt with. There
-                are three options:
+            update_path (str): If PATH and/or PYTHONPATH is present in the new
+                set of variables, this argument determines how the old value is
+                dealt with. There are three options:
                 * "prepend" : The new PATH values are prepended to the old ones.
                 * "append" : The new PATH values are appended to the old ones.
                 * "overwrite" : The old PATH is overwritten by the new one.
@@ -441,32 +511,41 @@ class BaseExecutor(ABC):
         self,
         env: Union[Dict[str, str], Callable[[], Dict[str, str]]],
         update_path: str = "prepend",
+        use_tenv_prefix: bool = False,
     ) -> None:
+        env_update: Dict[str, str]
         if callable(env):
-            env_update: Dict[str, str] = env()
+            raw_env_update: Dict[str, str] = env()
+            if use_tenv_prefix:
+                env_update = {
+                    f"LUTE_TENV_{key}": val for key, val in raw_env_update.items()
+                }
+            else:
+                env_update = raw_env_update
             self._analysis_desc.task_env.update(env_update)
             return
 
-        if "PATH" in env:
-            sep: str = os.pathsep
-            if update_path == "prepend":
-                env["PATH"] = (
-                    f"{env['PATH']}{sep}{self._analysis_desc.task_env['PATH']}"
-                )
-            elif update_path == "append":
-                env["PATH"] = (
-                    f"{self._analysis_desc.task_env['PATH']}{sep}{env['PATH']}"
-                )
-            elif update_path == "overwrite":
-                pass
-            else:
-                raise ValueError(
-                    (
-                        f"{update_path} is not a valid option for `update_path`!"
-                        " Options are: prepend, append, overwrite."
+        for key in ("PATH", "PYTHONPATH"):
+            if key in env and key in self._analysis_desc.task_env:
+                sep: str = os.pathsep
+                if update_path == "prepend":
+                    env[key] = f"{env[key]}{sep}{self._analysis_desc.task_env[key]}"
+                elif update_path == "append":
+                    env[key] = f"{self._analysis_desc.task_env[key]}{sep}{env[key]}"
+                elif update_path == "overwrite":
+                    pass
+                else:
+                    raise ValueError(
+                        (
+                            f"{update_path} is not a valid option for `update_path`!"
+                            " Options are: prepend, append, overwrite."
+                        )
                     )
-                )
-        self._analysis_desc.task_env.update(env)
+        if use_tenv_prefix:
+            env_update = {f"LUTE_TENV_{key}": val for key, val in env.items()}
+        else:
+            env_update = env
+        self._analysis_desc.task_env.update(env_update)
 
     def shell_source(self, env: str) -> None:
         """Source a script.
@@ -495,18 +574,30 @@ class BaseExecutor(ABC):
         if not os.path.exists(self._shell_source_script):
             logger.error(f"Cannot source environment from {self._shell_source_script}!")
             return
-
+        # Get both the environment and the python version of the target environment
         script: str = (
             f"set -a\n"
             f'source "{self._shell_source_script}" >/dev/null\n'
-            f'{sys.executable} -c "import os; print(dict(os.environ))"\n'
+            f'NEW_PYVER=$(python3 -c "import sys; '
+            "print(f'python{sys.version_info.major}.{sys.version_info.minor}')\")\n"
+            f'python3 -c "import os; env=dict(os.environ); '
+            "env['LUTE_NEW_PYVER']=os.environ.get('NEW_PYVER', ''); "
+            'print(env)"\n'
         )
         logger.info(f"Sourcing file {self._shell_source_script}")
+        subproc_env: Dict[str, str] = {}
+        for key, val in os.environ.items():
+            if "CONDA" not in key:
+                subproc_env[key] = val
         o, e = subprocess.Popen(
-            ["bash", "-c", script], stdout=subprocess.PIPE
+            ["bash", "-c", script], stdout=subprocess.PIPE, env=subproc_env
         ).communicate()
         tmp_environment: Dict[str, str] = eval(o)
         new_environment: Dict[str, str] = {}
+
+        # For picking up LUTE, the new environment may be a different python version
+        # So we need to make sure to pick it up appropriately for C-extension usage
+        new_pyver: str = tmp_environment.get("LUTE_NEW_PYVER", "python3.9")
         for key, value in tmp_environment.items():
             # Make sure LUTE vars are available
             if "LUTE_" in key or "SLURM_" in key or key in ("RUN", "EXPERIMENT"):
@@ -517,35 +608,67 @@ class BaseExecutor(ABC):
                 if key in os.environ and os.getenv(key) == value:
                     # Add identical items first
                     new_environment[key] = value
-                elif key == "PYTHONPATH":
-                    # Handle PYTHONPATH specifically if above doesn't catch it
-                    curr: Optional[str] = os.getenv("PYTHONPATH")
+                elif key in ("PYTHONPATH", "PATH"):
+                    curr: Optional[str] = os.getenv(key)
                     if curr is not None:
                         if curr in value:
-                            new_environment[key] = value
+                            new_environment[key] = f"{curr}:{value}"
                         else:
-                            # Not in PYTHONPATH, make sure to add it in
-                            new_environment[key] = f"{value}:{curr}"
+                            # Make sure to keep our env first, for dependencies
+                            # e.g. pydantic
+                            new_environment[key] = f"{curr}:{value}"
+                            # For the TENV, make sure they get the environment requested
+                            new_environment[f"LUTE_TENV_{key}"] = f"{value}:{curr}"
 
         # Until we make LUTE installable... Need to make sure this is available
         # for first-party Tasks, regardless of the directory they run in if using
         # a new environment
         old_python_path: str = new_environment.get("PYTHONPATH", "")
+        new_python_path: str = new_environment.get("LUTE_TENV_PYTHONPATH", "")
         lute_path: Optional[str] = os.getenv("LUTE_PATH")
+        new_lute_path: Optional[str] = lute_path
         if lute_path is None:
             logger.warning("LUTE_PATH not defined! Task may fail to find LUTE!")
         else:
+            assert new_lute_path
             if old_python_path:
                 new_environment["PYTHONPATH"] = f"{lute_path}:{old_python_path}"
             else:
                 new_environment["PYTHONPATH"] = lute_path
+
+            if new_pyver not in lute_path:
+                # We have a new lute_path to use for a different Python version
+                old_pyver: str = f"python{sys.version_info[0]}.{sys.version_info[1]}"
+                new_lute_path = lute_path.replace(old_pyver, new_pyver)
+                logger.debug(f"Task will use LUTE from: {new_lute_path}")
+
+            if not os.path.exists(new_lute_path):
+                logger.warning(
+                    f"Task will be running in {new_pyver}, but no LUTE installation "
+                    "for that version exists! Things may fail if depending on C "
+                    "extensions!"
+                )
+
+            if new_python_path:
+                new_environment["LUTE_TENV_PYTHONPATH"] = (
+                    f"{new_lute_path}:{new_python_path}"
+                )
+            elif new_lute_path:
+                new_environment["LUTE_TENV_PYTHONPATH"] = new_lute_path
+            else:
+                logger.warning("Could not determine a new Python version LUTE_PATH!")
+
         self._analysis_desc.task_env = new_environment
 
-    def _pre_task(self) -> None:
+    def _pre_task(self) -> str:
         """Any actions to be performed before task submission.
 
-        This method may or may not be used by subclasses. It may be useful
-        for logging etc.
+        This method should be modified carefully, if at all, by subclasses as
+        it prepares environments. This preparation is rather finicky given the
+        need to prevent collisions between various environments.
+
+        Returns:
+            lute_path (str): The path to the LUTE installation being used.
         """
         # This prevents the Executors in managed_tasks.py from all acquiring
         # resources like sockets.
@@ -566,13 +689,38 @@ class BaseExecutor(ABC):
         }
         self._analysis_desc.task_env.update(tmp)
 
+        # ********* Important ********* #
+        # If using _update_environment AND _shell_source, the environment
+        # variables in _update_environment must be prepended by LUTE_TENV_
+        lute_path: Optional[str] = os.getenv("LUTE_PATH")
+        if lute_path is None:
+            logger.debug("Absolute path to subprocess_task.py not found.")
+            lute_path = os.path.abspath(f"{os.path.dirname(__file__)}/../..")
+            os.environ.update({"LUTE_PATH": lute_path})
+            self._analysis_desc.task_env.update({"LUTE_PATH": lute_path})
+
+        use_tenv_prefix: bool = False
+        if self._shell_source_script is not None:
+            self._shell_source()
+            use_tenv_prefix = True
+
+        if self._delayed_update_env_args is not None:
+            self._update_environment(
+                *self._delayed_update_env_args, use_tenv_prefix=use_tenv_prefix
+            )
+
+        return lute_path
+
     def _submit_task(self, cmd: str) -> subprocess.Popen:
         proc: subprocess.Popen = subprocess.Popen(
             cmd.split(),
+            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=self._analysis_desc.task_env,
         )
+        if proc.stdin is not None:
+            os.set_blocking(proc.stdin.fileno(), False)
         if proc.stdout is not None:
             os.set_blocking(proc.stdout.fileno(), False)
         if proc.stderr is not None:
@@ -625,28 +773,43 @@ class BaseExecutor(ABC):
 
     def execute_task(self) -> None:
         """Run the requested Task as a subprocess."""
-        self._pre_task()
-        lute_path: Optional[str] = os.getenv("LUTE_PATH")
-        if lute_path is None:
-            logger.debug("Absolute path to subprocess_task.py not found.")
-            lute_path = os.path.abspath(f"{os.path.dirname(__file__)}/../..")
-            os.environ.update({"LUTE_PATH": lute_path})
-            self._analysis_desc.task_env.update({"LUTE_PATH": lute_path})
-        executable_path: str = f"{lute_path}/subprocess_task.py"
+        # _pre_task does Task environment preparation. All updates are done now
+        # to prevent various Managed Tasks which are all defined in the same module
+        # from affecting each other.
+        lute_path: str = self._pre_task()
+        executable_path: Optional[str] = shutil.which("subprocess_task")
+        if executable_path is None:
+            # Did not install and just running from a clone of repo
+            executable_path = f"{lute_path}/subprocess_task.py"
         config_path: str = self._analysis_desc.task_env["LUTE_CONFIGPATH"]
         params: str = f"-c {config_path} -t {self._analysis_desc.task_result.task_name}"
-
-        # Prevent all managed tasks from affecting each others environments
-        if self._shell_source_script is not None:
-            self._shell_source()
-
-        if self._delayed_update_env_args is not None:
-            self._update_environment(*self._delayed_update_env_args)
 
         cmd: str = self._submit_cmd(executable_path, params)
         proc: subprocess.Popen = self._submit_task(cmd)
         self._task_time0 = time.monotonic()
+        # In the event we were using generated parameters, we may have a _XX suffix
+        # Now that the Task has been submitted, we can remove that from the name
+        # for storage in the database - just reset the name
+        self.task_name = re.sub(r"_\d+$", "", self.task_name)
 
+        if self._lute_manager_url is not None:
+            # On STARTED we will store some information that could be useful for `maestro`
+            json_data: Dict[str, str] = {
+                "managed_task": self._m_task_name,
+                "task": self.task_name,
+                "status": "STARTED",
+                # This should be set by now
+                "executor_hostname": os.getenv("LUTE_EXECUTOR_HOST", "UNKNOWN"),
+            }
+            self._report_to_manager(end_point="status", json_data=json_data)
+
+        affinity: Set[int] = os.sched_getaffinity(0)
+        # By convention, the Executor takes the minimum core on this node.
+        # Task gets everything else. If we only have 1 core here then out of luck
+        # and cannot set new affinities without issues
+        if len(affinity) > 1:
+            executor_affinity: Set[int] = {min(affinity)}
+            os.sched_setaffinity(0, executor_affinity)
         while self._task_is_running(proc):
             self._task_loop(proc)
             if self._task_timeout is not None:
@@ -656,12 +819,16 @@ class BaseExecutor(ABC):
                     self._sigalrm_task(proc)
             time.sleep(self._analysis_desc.poll_interval)
 
+        if proc.stdin is not None:
+            os.set_blocking(proc.stdin.fileno(), True)
         if proc.stdout is not None:
             os.set_blocking(proc.stdout.fileno(), True)
         if proc.stderr is not None:
             os.set_blocking(proc.stderr.fileno(), True)
 
         self._finalize_task(proc)
+        if proc.stdin is not None:
+            proc.stdin.close()
         if proc.stdout is not None:
             proc.stdout.close()
         if proc.stderr is not None:
@@ -698,6 +865,29 @@ class BaseExecutor(ABC):
         for comm in self._communicators:
             comm.clear_communicator()
         time.sleep(1)
+        status: TaskStatus = self._analysis_desc.task_result.task_status
+        status_str: str
+        if status == TaskStatus.FAILED:
+            status_str = "FAILED"
+        elif status == TaskStatus.CANCELLED:
+            status_str = "CANCELLED"
+        elif status == TaskStatus.TIMEDOUT:
+            status_str = "TIMEDOUT"
+        else:
+            status_str = "COMPLETED"
+
+        hostfile: Optional[str] = os.getenv("LUTE_MPI_HOSTFILE_PATH")
+        if hostfile is not None:
+            if os.path.exists(hostfile):
+                logger.debug(f"Removing (temporary) MPI hostfile: {hostfile}.")
+                os.remove(hostfile)
+
+        if self._lute_manager_url is not None:
+            json_data = {
+                "managed_task": self._m_task_name,
+                "status": status_str,
+            }
+            self._report_to_manager(end_point="status", json_data=json_data)
         if self._analysis_desc.task_result.task_status in (
             TaskStatus.FAILED,
             TaskStatus.TIMEDOUT,
@@ -988,7 +1178,18 @@ class Executor(BaseExecutor):
             elog_data: Dict[str, str] = {
                 f"{executor._analysis_desc.task_result.task_name} status": "RUNNING",
             }
-            #post_elog_run_status(elog_data)
+            post_elog_run_status(elog_data)
+            # Tell `maestro` we're RUNNING as well
+            if executor._lute_manager_url is not None:
+                json_data: Dict[str, Any] = {
+                    "managed_task": executor.managed_task_name,
+                    "task": executor.task_name,
+                    "status": "RUNNING",
+                }
+                executor._report_to_manager(
+                    end_point="status",
+                    json_data=json_data,
+                )
             return None
 
         self.add_hook("task_started", task_started)
@@ -1062,6 +1263,15 @@ class Executor(BaseExecutor):
                     for item in executor._analysis_desc.task_result.summary:
                         if is_printable_type(item):
                             logger.info(item)
+                            if self._lute_manager_url is not None:
+                                message: str = repr(msg.contents)
+                                json_data: Dict[str, str] = {
+                                    "managed_task": self._m_task_name,
+                                    "message": message,
+                                }
+                                self._report_to_manager(
+                                    end_point="log", json_data=json_data
+                                )
 
                 logger.info(executor._analysis_desc.task_result.task_status)
             elog_data: Dict[str, str] = {
@@ -1080,11 +1290,77 @@ class Executor(BaseExecutor):
         ) -> Optional[bool]:
             if isinstance(msg.contents, str):
                 # This should be log formatted already
-                print(msg.contents)
+                print(msg.contents, flush=True)
                 return True
             return False
 
         self.add_hook("task_log", task_log)
+
+        def task_request(
+            executor: Executor_T,
+            msg: Message,
+            proc: Optional[subprocess.Popen] = None,
+        ) -> Optional[bool]:
+            if isinstance(msg, TaskRequestMessage):
+                req: TaskRequest = msg.contents
+                if req.for_manager:
+                    # Task wants to ask something of the workflow manager directly
+                    if req.request == "RUNNING_TASKS":
+                        if executor._lute_manager_url is not None:
+                            # Ask `maestro` for the running Tasks
+                            # Response is returned, but ignoring for now
+                            resp: Any = executor._report_to_manager(
+                                end_point="tasks",
+                                json_data=None,
+                                method="GET",
+                            )
+                            for communicator in executor._communicators:
+                                if isinstance(communicator, PipeCommunicator):
+                                    communicator.write(
+                                        Message(contents=resp), proc=proc
+                                    )
+                            # Immediately read again in this case, since the Task
+                            # may have an answer instantly
+                            executor._task_loop(proc=proc)  # type: ignore
+                else:
+                    # Task wants to ask something of another Task
+                    # This still goes via the workflow manager. But different APIs
+                    ...
+            else:
+                logger.error(
+                    "Task Request improperly formatted. Received message of "
+                    f"type: {type(msg)}"
+                )
+            return None
+
+        self.add_hook("task_request", task_request)
+
+        def task_metadata(
+            executor: Executor_T,
+            msg: Message,
+            proc: Optional[subprocess.Popen] = None,
+        ) -> Optional[bool]:
+            if isinstance(msg, TaskMetadataMessage):
+                # Maestro just updates all metadata if its provided on any status
+                # update. So this can be a simple call.
+                if executor._lute_manager_url is not None:
+                    json_data: Dict[str, Any] = {
+                        "managed_task": executor.managed_task_name,
+                        "task": executor.task_name,
+                        "status": "RUNNING",
+                    }
+                    # Add in the Task's metadata
+                    json_data.update(msg.contents)
+                    executor._report_to_manager(
+                        end_point="status",
+                        json_data=json_data,
+                    )
+            else:
+                logger.debug("Got metadata signal without metadata message.")
+
+            return None
+
+        self.add_hook("task_metadata", task_metadata)
 
     def _task_loop(self, proc: subprocess.Popen) -> None:
         """Actions to perform while the Task is running.
@@ -1106,13 +1382,40 @@ class Executor(BaseExecutor):
                 if msg.contents is not None:
                     if isinstance(msg.contents, str) and msg.contents != "":
                         logger.info(msg.contents)
+                        if self._lute_manager_url is not None:
+                            message: str = msg.contents
+                            json_data: Dict[str, str] = {
+                                "managed_task": self._m_task_name,
+                                "message": message,
+                            }
+                            self._report_to_manager(
+                                end_point="log", json_data=json_data
+                            )
                     elif isinstance(msg.contents, TaskParametersDBReference):
                         # We will log the actual reconstructed TaskParameters object
                         # instead of the raw message. The raw message only contains
                         # the pointers for reconstructing the object.
                         logger.info(self._analysis_desc.task_parameters)
+                        if self._lute_manager_url is not None:
+                            message = repr(msg.contents)
+                            json_data = {
+                                "managed_task": self._m_task_name,
+                                "message": message,
+                            }
+                            self._report_to_manager(
+                                end_point="log", json_data=json_data
+                            )
                     elif not isinstance(msg.contents, str):
                         logger.info(msg.contents)
+                        if self._lute_manager_url is not None:
+                            message = repr(msg.contents)
+                            json_data = {
+                                "managed_task": self._m_task_name,
+                                "message": message,
+                            }
+                            self._report_to_manager(
+                                end_point="log", json_data=json_data
+                            )
                 if not communicator.has_messages:
                     break
 
@@ -1300,7 +1603,7 @@ class MPIExecutor(Executor):
         nprocs: int = max(
             int(os.environ.get("SLURM_NPROCS", len(os.sched_getaffinity(0)))) - 1, 1
         )
-        mpi_cmd: str = f"mpirun -np {nprocs}"
+        mpi_cmd: str = f"mpirun -np {nprocs} --map-by core"
         if __debug__:
             py_cmd = f"python -B -u -m mpi4py.run {executable_path} {params}"
         else:

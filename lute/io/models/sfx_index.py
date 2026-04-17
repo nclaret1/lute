@@ -138,7 +138,7 @@ class IndexCrystFELParameters(ThirdPartyParameters):
     prefix: Optional[str] = Field(
         description="Add a prefix to the filenames from the infile argument.",
         flag_type="--",
-        rename_param="asapo-stream",
+        # rename_param="asapo-stream",
     )
     nthreads: PositiveInt = Field(
         max(int(os.environ.get("SLURM_NPROCS", len(os.sched_getaffinity(0)))) - 1, 1),
@@ -415,44 +415,73 @@ class IndexCrystFELParameters(ThirdPartyParameters):
     @validator("in_file", always=True)
     def validate_in_file(cls, in_file: str, values: Dict[str, Any]) -> str:
         if in_file == "":
+            # Check Cheetah first
             filename: Optional[str] = read_latest_db_entry(
-                f"{values['lute_config'].work_dir}", "FindPeaksPyAlgos", "out_file"
+                f"{values['lute_config'].work_dir}",
+                "RunCheetah",
+                "result.payload",
             )
             if filename is None:
-                exp: str = values["lute_config"].experiment
-                run: int = int(values["lute_config"].run)
-                tag: Optional[str] = read_latest_db_entry(
-                    f"{values['lute_config'].work_dir}", "FindPeaksPsocake", "tag"
+                # Check FindPeaksSFX
+                filename = read_latest_db_entry(
+                    f"{values['lute_config'].work_dir}", "FindPeaksSFX", "out_file"
                 )
-                out_dir: Optional[str] = read_latest_db_entry(
-                    f"{values['lute_config'].work_dir}", "FindPeaksPsocake", "outDir"
-                )
-                if out_dir is not None:
-                    fname: str = f"{out_dir}/{exp}_{run:04d}"
-                    if tag is not None:
-                        fname = f"{fname}_{tag}"
-                    return f"{fname}.lst"
-            else:
+                if filename is None:
+                    # Check Psocake last
+                    exp: str = values["lute_config"].experiment
+                    run: int = int(values["lute_config"].run)
+                    tag: Optional[str] = read_latest_db_entry(
+                        f"{values['lute_config'].work_dir}", "FindPeaksPsocake", "tag"
+                    )
+                    psocake_out_dir: Optional[str] = read_latest_db_entry(
+                        f"{values['lute_config'].work_dir}",
+                        "FindPeaksPsocake",
+                        "outDir",
+                    )
+                    if psocake_out_dir is not None:
+                        fname: str = f"{psocake_out_dir}/{exp}_{run:04d}"
+                        if tag is not None:
+                            fname = f"{fname}_{tag}"
+                        filename = f"{fname}.lst"
+            if filename is not None:
                 return filename
         return in_file
 
     @validator("out_file", always=True)
     def validate_out_file(cls, out_file: str, values: Dict[str, Any]) -> str:
         if out_file == "":
-            expmt: str = values["lute_config"].experiment
-            run: int = int(values["lute_config"].run)
-            work_dir: str = values["lute_config"].work_dir
-            tag: Optional[str] = read_latest_db_entry(
-                f"{values['lute_config'].work_dir}", "FindPeaksPyAlgos", "tag"
+            # Check Cheetah first
+            new_out_file: Optional[str] = None
+            cheetah_out_dir: Optional[str] = read_latest_db_entry(
+                f"{values['lute_config'].work_dir}",
+                "RunCheetah",
+                "cheetah.processed_directory",
             )
-            if tag is None:
-                tag = read_latest_db_entry(
-                    f"{values['lute_config'].work_dir}", "FindPeaksPsocake", "tag"
+            if cheetah_out_dir is not None:
+                # These should be defined
+                cheetah_prefix: Optional[str] = read_latest_db_entry(
+                    f"{values['lute_config'].work_dir}",
+                    "RunCheetah",
+                    "cheetah.processed_filename_prefix",
                 )
-            fname: str = f"{expmt}_r{run:04d}"
-            if tag is not None:
-                fname = f"{fname}_{tag}"
-            return f"{work_dir}/{fname}.stream"
+                new_out_file = f"{cheetah_out_dir}/{cheetah_prefix}.stream"
+            else:
+                expmt: str = values["lute_config"].experiment
+                run: int = int(values["lute_config"].run)
+                work_dir: str = values["lute_config"].work_dir
+                tag: Optional[str] = read_latest_db_entry(
+                    f"{values['lute_config'].work_dir}", "FindPeaksSFX", "tag"
+                )
+                if tag is None:
+                    tag = read_latest_db_entry(
+                        f"{values['lute_config'].work_dir}", "FindPeaksPsocake", "tag"
+                    )
+                fname: str = f"{expmt}_r{run:04d}"
+                if tag is not None:
+                    fname = f"{fname}_{tag}"
+                new_out_file = f"{work_dir}/{fname}.stream"
+            if new_out_file is not None:
+                return new_out_file
         return out_file
 
 

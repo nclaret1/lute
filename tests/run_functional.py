@@ -3,11 +3,9 @@
 __author__ = "Gabriel Dorlhiac"
 
 import argparse
-import collections
-import datetime
-import getpass
 import logging
 import os
+import random
 import shutil
 import subprocess
 import sys
@@ -22,17 +20,26 @@ from typing import (
     Literal,
     Optional,
     Tuple,
-    TypedDict,
     Union,
     cast,
     overload,
 )
 
-import yaml
 import json
 import requests
+import socket
 from requests.auth import HTTPBasicAuth
 from requests.exceptions import HTTPError
+
+from lute.execution.launch import (
+    request_arp_token,
+    retrieve_run_info,
+    get_lute_launch_config,
+    get_concurrent_job_steps,
+    EnvLaunchInfo,
+    LuteParams,
+    LuteLaunchConfig,
+)
 
 # Requests, urllib have lots of debug statements. Only set level for this logger
 logger: logging.Logger = logging.getLogger("Launch_Func_Tests")
@@ -45,54 +52,6 @@ if __debug__:
     logger.setLevel(logging.DEBUG)
 else:
     logger.setLevel(logging.INFO)
-
-
-class DagRunConf(TypedDict):
-    experiment: str
-    run_id: str
-    JID_UPDATE_COUNTERS: Optional[str]
-    ARP_ROOT_JOB_ID: str
-    ARP_LOCATION: str
-    Authorization: str
-    user: str
-    lute_location: str
-    kerb_file: Optional[str]
-    lute_params: Dict[str, Union[str, bool]]
-    slurm_params: List[str]
-    workflow: Dict[str, Any]
-    run_type: Optional[str]
-    is_daq2: Optional[bool]
-
-
-class DagRunData(TypedDict):
-    dag_run_id: str
-    conf: DagRunConf
-
-
-class LuteParams(TypedDict):
-    config_file: str
-    debug: bool
-
-
-class FlowConf(TypedDict):
-    experiment: str
-    run_id: str
-    JID_UPDATE_COUNTERS: Optional[str]
-    ARP_ROOT_JOB_ID: str
-    ARP_LOCATION: str
-    Authorization: str
-    user: str
-    lute_location: str
-    kerb_file: Optional[str]
-    lute_params: LuteParams
-    slurm_params: List[str]
-    workflow: Dict[str, Any]
-    run_type: Optional[str]
-    is_daq2: Optional[bool]
-
-
-class FlowRequestDict(TypedDict):
-    parameters: Dict[Literal["flow_conf"], FlowConf]
 
 
 def _retrieve_prefect_creds_and_url(
@@ -128,44 +87,6 @@ def _retrieve_airflow_pw(instance: str = "prod", is_admin: bool = False) -> str:
     with open(path, "r") as f:
         pw: str = f.readline().strip()
     return pw
-
-
-def _request_arp_token(exp: str, lifetime: int = 300) -> str:
-    """Request an ARP token via Kerberos endpoint.
-
-    A token is required for job submission.
-
-    Args:
-        exp (str): The experiment to request the token for. All tokens are
-            scoped to a single experiment.
-
-        lifetime (int): The lifetime, in minutes, of the token. After the token
-            expires, it can no longer be used for job submission. The maximum
-            time you can request is 480 minutes (i.e. 8 hours). NOTE: since this
-            token is used for the entirety of a workflow, it must have a lifetime
-            equal or longer than the duration of the workflow's execution time.
-    """
-    from kerberos import GSSError  # type: ignore
-    from krtc import KerberosTicket  # type: ignore
-
-    try:
-        krbheaders: Dict[str, str] = KerberosTicket(
-            "HTTP@pswww.slac.stanford.edu"
-        ).getAuthHeaders()
-    except GSSError:
-        logger.info(
-            "Cannot proceed without credentials. Try running `kinit` from the command-line."
-        )
-        raise
-    base_url: str = "https://pswww.slac.stanford.edu/ws-kerb/lgbk/lgbk"
-    token_endpoint: str = (
-        f"{base_url}/{exp}/ws/generate_arp_token?token_lifetime={lifetime}"
-    )
-    resp: requests.models.Response = requests.get(token_endpoint, headers=krbheaders)
-    resp.raise_for_status()
-    token: str = resp.json()["value"]
-    formatted_token: str = f"Bearer {token}"
-    return formatted_token
 
 
 def modify_permissions(path: str, permissions: int) -> None:
@@ -446,68 +367,30 @@ def run_workflow_airflow(
     assert isinstance(arp_job_id, str)
     assert isinstance(jid_authorization, str)
 
-    elog_auth: Dict[str, str] = {
-        "Authorization": jid_authorization,
+    run_type, is_daq2 = retrieve_run_info(experiment, run_num, jid_authorization)
+
+    launch_info: EnvLaunchInfo = {
+        "experiment": experiment,
+        "run_num": run_num,
+        "authorization": jid_authorization,
+        "arp_job_id": arp_job_id,
+        "kerb_file": cache_file,
     }
-    base_url: str = "https://pswww.slac.stanford.edu/ws-jwt/lgbk/lgbk"
-    run_doc_endpoint: str = f"{experiment}/ws/runs/{run_num}"
-    run_doc_url: str = f"{base_url}/{run_doc_endpoint}"
-    resp = requests.get(run_doc_url, headers=elog_auth)
 
-    run_type: str
-    is_daq2: Optional[bool] = None
-    if resp.status_code != 200:
-        logger.warning(
-            "Unable to retrieve run document! No `run_type` information will be used! "
-            "No information about psana1/psana2 can be retrieved. "
-            "Workflow may be able to continue but this could point to issues with "
-            "API access that lead to problems downstream."
-        )
-        run_type = "UNKNOWN"
-    else:
-        # If API request succeeds `type` should always be defined
-        run_type = resp.json()["value"]["type"]
+    conf: LuteLaunchConfig = get_lute_launch_config(
+        launch_info=launch_info,
+        run_type=run_type,
+        is_daq2=is_daq2,
+        lute_params=params,
+        slurm_params=extra_args,
+        workflow_defn=wf_defn,
+        lute_location=lute_location,
+        executable_subdir="launch_scripts",  # Airflow script location
+    )
 
-        # Try checking for "psana1" vs "psana2" by searching for "drp" in detector names
-        param_keys: collections.abc.KeysView = resp.json()["value"]["params"].keys()
-        for key in param_keys:
-            if "/drp/" in key:
-                # Detectors in LCLS2 DAQ are sent to eLog as "DAQ Detectors/drp/<name>"
-                # In LCLS1 they are sent as "DAQ Detector/<name>"
-                is_daq2 = True
-                break
-        else:
-            is_daq2 = False
-
-    if resp.status_code != 200:
-        logger.warning(
-            "Unable to retrieve run document! No `run_type` information will be used! "
-            "Workflow may be able to continue but this could point to issues with "
-            "API access that lead to problems downstream."
-        )
-        run_type = "UNKNOWN"
-    else:
-        # If API request succeeds `type` should always be defined
-        run_type = resp.json()["value"]["type"]
-
-    dag_run_data: DagRunData = {
+    dag_run_data: Dict[str, Any] = {
         "dag_run_id": str(uuid.uuid4()),
-        "conf": {
-            "experiment": cast(str, os.getenv("EXPERIMENT")),
-            "run_id": f"{cast(str, os.getenv('RUN_NUM'))}_{datetime.datetime.utcnow().isoformat()}",
-            "JID_UPDATE_COUNTERS": os.getenv("JID_UPDATE_COUNTERS"),
-            "ARP_ROOT_JOB_ID": cast(str, os.getenv("ARP_JOB_ID")),
-            "ARP_LOCATION": os.getenv("ARP_LOCATION", "S3DF"),
-            "Authorization": cast(str, os.getenv("Authorization")),
-            "user": getpass.getuser(),
-            "lute_location": lute_location,
-            "kerb_file": cache_file,
-            "lute_params": params,
-            "slurm_params": extra_args,
-            "workflow": wf_defn,  # Only used for custom defined workflows.
-            "run_type": run_type,
-            "is_daq2": is_daq2,
-        },
+        "conf": conf,
     }
 
     # Get Task information
@@ -663,59 +546,31 @@ def run_workflow_prefect(
     assert isinstance(arp_job_id, str)
     assert isinstance(jid_authorization, str)
 
-    elog_auth: Dict[str, str] = {
-        "Authorization": jid_authorization,
-    }
-    base_url: str = "https://pswww.slac.stanford.edu/ws-jwt/lgbk/lgbk"
-    run_doc_endpoint: str = f"{experiment}/ws/runs/{run_num}"
-    run_doc_url: str = f"{base_url}/{run_doc_endpoint}"
-    resp = requests.get(run_doc_url, headers=elog_auth)
-
-    run_type: str
-    is_daq2: Optional[bool] = None
-    if resp.status_code != 200:
-        logger.warning(
-            "Unable to retrieve run document! No `run_type` information will be used! "
-            "No information about psana1/psana2 can be retrieved. "
-            "Workflow may be able to continue but this could point to issues with "
-            "API access that lead to problems downstream."
-        )
-        run_type = "UNKNOWN"
-    else:
-        # If API request succeeds `type` should always be defined
-        run_type = resp.json()["value"]["type"]
-
-        # Try checking for "psana1" vs "psana2" by searching for "drp" in detector names
-        param_keys: collections.abc.KeysView = resp.json()["value"]["params"].keys()
-        for key in param_keys:
-            if "/drp/" in key:
-                # Detectors in LCLS2 DAQ are sent to eLog as "DAQ Detectors/drp/<name>"
-                # In LCLS1 they are sent as "DAQ Detector/<name>"
-                is_daq2 = True
-        else:
-            is_daq2 = False
+    run_type, is_daq2 = retrieve_run_info(experiment, run_num, jid_authorization)
 
     params: LuteParams = {
         "config_file": config_file,
         "debug": True,
     }
 
-    conf: FlowConf = {
-        "experiment": cast(str, os.getenv("EXPERIMENT")),
-        "run_id": f"{cast(str, os.getenv('RUN_NUM'))}_{datetime.datetime.utcnow().isoformat()}",
-        "JID_UPDATE_COUNTERS": os.getenv("JID_UPDATE_COUNTERS"),
-        "ARP_ROOT_JOB_ID": cast(str, os.getenv("ARP_JOB_ID")),
-        "ARP_LOCATION": os.getenv("ARP_LOCATION", "S3DF"),
-        "Authorization": cast(str, os.getenv("Authorization")),
-        "user": getpass.getuser(),
-        "lute_location": lute_location,
+    launch_info: EnvLaunchInfo = {
+        "experiment": experiment,
+        "run_num": run_num,
+        "authorization": jid_authorization,
+        "arp_job_id": arp_job_id,
         "kerb_file": cache_file,
-        "lute_params": params,
-        "slurm_params": extra_args,
-        "workflow": wf_defn,
-        "run_type": run_type,
-        "is_daq2": is_daq2,
     }
+
+    conf: LuteLaunchConfig = get_lute_launch_config(
+        launch_info=launch_info,
+        run_type=run_type,
+        is_daq2=is_daq2,
+        lute_params=params,
+        slurm_params=extra_args,
+        workflow_defn=wf_defn,
+        lute_location=lute_location,
+        executable_subdir="launch_scripts",
+    )
 
     # Get CSRF
     ##############################################
@@ -736,7 +591,7 @@ def run_workflow_prefect(
         f"{PREFECT_API_URL}/deployments/{deployment_id}/create_flow_run"
     )
 
-    data: FlowRequestDict = {"parameters": {"flow_conf": conf}}
+    data: Dict[str, Any] = {"parameters": {"flow_conf": conf}}
     headers: Dict[str, str] = {
         "Prefect-Csrf-Token": token,
         "Prefect-Csrf-Client": client,
@@ -784,6 +639,94 @@ def run_workflow_prefect(
         return True
 
 
+def find_random_port(
+    min_port: int = 41923, max_port: int = 64324, max_tries: int = 20
+) -> Optional[int]:
+    ports: List[int] = random.choices(range(min_port, max_port), k=max_tries)
+
+    for port in ports:
+        sock: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+        try:
+            sock.bind(("", port))
+            sock.close()
+            del sock
+            return port
+        except Exception:
+            continue
+    return None
+
+
+def run_workflow_maestro(
+    lute_location: str,
+    config_file: str,
+    workflow_file: str,
+    extra_args: List[str],
+) -> bool:
+    """Run a workflow using Maestro.
+
+    Args:
+        lute_location (str): Path to the LUTE installation.
+
+        config_file (str): Path to the configuration YAML.
+
+        workflow_file (str): Path to the DAG definition YAML.
+
+        extra_args (List[str]): The set of additional arguments which should be
+            for SLURM.
+
+    Returns:
+        is_successful (bool): True if workflow returns successful. False otherwise.
+    """
+    from maestro._maestro import _maestro
+    from maestro.parser import load_lute_dag
+
+    # Experiment, run #, and ARP env variables come from ARP submission only
+    # BUT, we should've added them to the env by the time this is called
+    experiment: str = cast(str, os.getenv("EXPERIMENT"))
+    run_num: str = cast(str, os.getenv("RUN_NUM"))
+    jid_authorization: str = cast(str, os.getenv("Authorization"))
+
+    run_type, is_daq2 = retrieve_run_info(experiment, run_num, jid_authorization)
+
+    wf_defn: List[_maestro.JobStep] = load_lute_dag(
+        workflow_path=workflow_file,
+        lute_location=lute_location,
+        executable_subdir="install/bin",
+        config_file=config_file,
+        debug=True,
+        default_slurm_params=" ".join(extra_args),
+    )
+
+    num_concurrent_steps: int = get_concurrent_job_steps(wf_defn)
+    manager_host: str = socket.gethostname()
+    manager_port: Optional[int] = find_random_port()
+    if manager_port is None:
+        raise RuntimeError("Cannot bind a port!")
+    os.environ["LUTE_MANAGER_URL"] = f"{manager_host}:{manager_port}"
+
+    # fmt: off
+    manager_params: _maestro.ManagerParameters = _maestro.ManagerParameters(
+        num_concurrent_steps,                     # Manager threads
+        2,                                        # Server threads
+        True,                                     # Unbuffered logs
+        "0.0.0.0",                                # Server IP
+        manager_port,                             # Server port
+        _maestro.LauncherType.SlurmLauncherType,  # Launch mechanism
+        is_daq2 if is_daq2 is not None else True, # Is daq2?
+        run_type,                                 # Run type
+    )
+    # fmt: on
+
+    status: str = _maestro.run_workflow(wf_defn, manager_params)
+    if status == "FAILED":
+        logger.error(f"Maestro workflow failed: {status}")
+        return False
+
+    logger.info(f"Maestro workflow exited: {status}")
+    return True
+
+
 def clean_up(
     cache_file: Optional[str], lute_location: str, output_location: str
 ) -> None:
@@ -813,6 +756,16 @@ if __name__ == "__main__":
     )
     # Airflow vs Prefect arguments
     parser.add_argument(
+        "--use_prefect",
+        help="Use prefect (experimental) instead of maestro.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--use_airflow",
+        help="Use Airflow instead of maestro.",
+        action="store_true",
+    )
+    parser.add_argument(
         "-a",
         "--admin",
         help="Run as Airflow admin. Requires permissions. Ignored if using prefect.",
@@ -823,12 +776,12 @@ if __name__ == "__main__":
         help="Use test Airflow instance. Ignored if using prefect.",
         action="store_true",
     )
+    # Options for running specific versions of LUTE
     parser.add_argument(
-        "--use_prefect",
-        help="Use prefect (experimental) instead of Airflow.",
+        "--no_clone",
+        help="If passed, will use the build of LUTE that the script was called from.",
         action="store_true",
     )
-    # Options for running specific versions of LUTE
     parser.add_argument(
         "--git_pr_id",
         help="Check out a specific GitHub PR ID of LUTE to run (a PR branch).",
@@ -876,6 +829,17 @@ if __name__ == "__main__":
         ),
         action="store_true",
     )
+    # Whether to allow output location to exist or not
+    # To avoid accidental overwrites, by default we exit if the output location
+    # already existed prior to running tests
+    parser.add_argument(
+        "--exist_ok",
+        help=(
+            "If passed, tests will continue even if the determined output directory "
+            "already existed. It is possible things may be overwritten in this case."
+        ),
+        action="store_true",
+    )
 
     args: argparse.Namespace
     extra_args: List[str]
@@ -886,29 +850,44 @@ if __name__ == "__main__":
         logger.error("No Kerberos cache. Try running `kinit` and resubmitting.")
         sys.exit(-1)
 
-    logger.debug(f"Cloning LUTE to {args.run_dir}")
-    git_clone("slac-lcls/lute", args.run_dir, 0o777)
-    if args.git_tag is not None and args.git_pr_id is not None:
-        logger.warning(
-            "Provided both a git tag and git ID to use. Will default to using the ID."
-        )
-        logger.info(f"Switching to PR branch ID {args.git_pr_id}")
-        git_fetch_pr_branch(f"{args.run_dir}/lute", args.git_pr_id)
-    elif args.git_tag is not None:
-        logger.info(f"Switching to tag {args.git_tag}")
-        git_checkout_branch(f"{args.run_dir}/lute", args.git_tag)
-    elif args.git_pr_id is not None:
-        logger.info(f"Switching to PR branch ID {args.git_pr_id}")
-        git_fetch_pr_branch(f"{args.run_dir}/lute", args.git_pr_id)
+    run_dir: str
+    lute_location: str
+    if not args.no_clone:
+        run_dir = args.run_dir
+        logger.debug(f"Cloning LUTE to {run_dir}")
+        git_clone("slac-lcls/lute", run_dir, 0o777)
+        if args.git_tag is not None and args.git_pr_id is not None:
+            logger.warning(
+                "Provided both a git tag and git ID to use. Will default to using the ID."
+            )
+            logger.info(f"Switching to PR branch ID {args.git_pr_id}")
+            git_fetch_pr_branch(f"{run_dir}/lute", args.git_pr_id)
+        elif args.git_tag is not None:
+            logger.info(f"Switching to tag {args.git_tag}")
+            git_checkout_branch(f"{run_dir}/lute", args.git_tag)
+        elif args.git_pr_id is not None:
+            logger.info(f"Switching to PR branch ID {args.git_pr_id}")
+            git_fetch_pr_branch(f"{run_dir}/lute", args.git_pr_id)
+        else:
+            logger.info("Running LUTE from dev branch.")
+        lute_location = f"{run_dir}/lute"
     else:
-        logger.info("Running LUTE from dev branch.")
+        run_dir = os.path.abspath(f"{os.path.dirname(__file__)}/../..")
+        lute_location = os.path.abspath(f"{os.path.dirname(__file__)}/..")
 
-    lute_location: str = f"{args.run_dir}/lute"
-
-    output_location: str = f"{args.run_dir}/lute_output"
+    output_location: str = f"{run_dir}/lute_output"
     logger.info(f"Will write output to {output_location}")
-    os.makedirs(output_location, mode=0o777)
-    os.chmod(output_location, mode=0o777)
+    if not os.path.exists(output_location):
+        os.makedirs(output_location, mode=0o777)
+        os.chmod(output_location, mode=0o777)
+    else:
+        if not args.exist_ok:
+            logger.error(
+                f"Output location ({output_location}) already exists! Exiting now. "
+                "If you intended this, you can resubmit with the `--exist_ok` flag."
+            )
+            sys.exit(-1)
+        logger.warning(f"Output location ({output_location}) already exists.")
 
     func_tests_dir: str
     if args.tests_dir is not None:
@@ -955,6 +934,12 @@ if __name__ == "__main__":
                 True if os.path.exists(f"{test_dir}/SHOULD_FAIL") else False
             )
 
+            # Replace DAG SLURM account for account provided on command-line
+            for arg in extra_args:
+                if "--account=" in arg:
+                    sed_pattern = f"s|--account=[^[:space:]]*|{arg}|g"
+                    inplace_sed(wf_file, sed_pattern)
+
             # Retrieve the experiment and run from each test YAML
             experiment: str = parse_yaml_value(config_file, "experiment")
             run: str = parse_yaml_value(config_file, "run")
@@ -963,22 +948,16 @@ if __name__ == "__main__":
             # run_workflow function uses them
             os.environ["EXPERIMENT"] = experiment
             os.environ["RUN_NUM"] = run
-            os.environ["Authorization"] = _request_arp_token(experiment)
+            os.environ["Authorization"] = request_arp_token(experiment)
             os.environ["ARP_JOB_ID"] = str(uuid.uuid4())
 
             run_workflow: Union[
                 Callable[[str, str, str, bool, bool], bool],
                 Callable[[str, str, str], bool],
+                Callable[[str, str, str, List[str]], bool],
             ]
             is_successful: bool
-            if args.use_prefect:
-                run_workflow = run_workflow_prefect
-                is_successful = run_workflow(
-                    lute_location=lute_location,
-                    config_file=config_file,
-                    workflow_file=wf_file,
-                )
-            else:
+            if args.use_airflow:
                 run_workflow = run_workflow_airflow
                 is_successful = run_workflow(
                     lute_location=lute_location,
@@ -986,6 +965,21 @@ if __name__ == "__main__":
                     workflow_file=wf_file,
                     use_test_inst=args.test_airflow,
                     is_admin=args.admin,
+                )
+            elif args.use_prefect:
+                run_workflow = run_workflow_prefect
+                is_successful = run_workflow(
+                    lute_location=lute_location,
+                    config_file=config_file,
+                    workflow_file=wf_file,
+                )
+            else:
+                run_workflow = run_workflow_maestro
+                is_successful = run_workflow(
+                    lute_location=lute_location,
+                    config_file=config_file,
+                    workflow_file=wf_file,
+                    extra_args=extra_args,
                 )
 
             if is_successful:

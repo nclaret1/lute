@@ -4,7 +4,7 @@ title: "Config to test Xtc conversion"
 experiment: "xpptut15"
 run: "90"
 date: "2025/08/25"
-lute_version: 0.1      # Do not be change unless need to force older version
+lute_version: 0.2.0      # Do not be change unless need to force older version
 task_timeout: 600
 work_dir: ""
 ...

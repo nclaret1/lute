@@ -4,7 +4,7 @@ title: "LUTE Task Configuration" # Include experiment description if desired
 #experiment: ""
 #run: "{{ $RUN_NUM }}"
 date: "2023/10/25"
-lute_version: 0.1      # Do not be change unless need to force older version
+lute_version: 0.2.0      # Do not be change unless need to force older version
 task_timeout: 600
 work_dir: "/sdf/data/lcls/ds/xpp"
 ...
@@ -77,12 +77,17 @@ AnalyzeSmallDataXES:
 # For out of memory issues try setting gather_interval
 SubmitSMD:
   # Command line arguments
+  #map_by: "core"   # MPI resource mapping - take care with changing unless familiar
+  #bind_to: "core"  # MPI resource binding - take care with changing unless familiar
   #producer: "/path/to/smalldata_tools/producers/smd_producer.py"
   #run: 99
   #experiment: ""
   #stn: 0
   #directory: ""
-  #config: "xpp"
+  #psdm_dir: ""
+  #nevents: 5
+  #interactive: false
+  #config: "mfx_cctbx"
   #gather_interval: 25
   #norecorder: False
   #url: "https://pswww.slac.stanford.edu"
@@ -105,6 +110,7 @@ SubmitSMD:
   # In the future this will be automated. If you have multiple detectors you can
   # add them with their own set of parameters.
   #detnames: []
+  #xdetectors: []
   #epicsPV: []
   #ttCalib: []
   # Provide detector image sum algorithms.
@@ -126,9 +132,11 @@ SubmitSMD:
   #    - "calib_skipFirst_max"
   #getROIs:
   #  jungfrau1M:   # Change to detector name
-  #    ROIs: [[[1, 2], [157, 487], [294, 598]]]
-  #    writeArea: True   # Whether to save ROI, if False, save sum but not img.
-  #    thresADU: None
+  #    - ROI: [[[1, 2], [157, 487], [294, 598]]]
+  #      #name: "abcd" # Providing a name is only required if you are creating multiple ROIs
+  #      writeArea: True   # Whether to save ROI, if False, save sum but not img.
+  #      thresADU: None
+  #      calcPars: True
   #getAzIntParams:
   #  Rayonix:
   #    eBeam: 18
@@ -136,6 +144,14 @@ SubmitSMD:
   #    dis_to_sam: 80.0
   #    tx: 0
   #    ty: 0
+  #    ADU_per_Photon: 1.0
+  #    phiBins: 1
+  #    qbin: 5e-3
+  #    thresRms: null
+  #    thresADUhigh: null
+  #    geomCorr: true
+  #    polCorr: true
+  #    userMask: "/path/to/numpy_array.
   #getAzIntPyFAIParams:
   #  Rayonix:
   #    pix_size: 176e-6
@@ -157,6 +173,7 @@ SubmitSMD:
   #    thresADU: 60
   #    useRms: True
   #    nData: 1e5
+  #    relabel: true
   #getDroplet2Photons:
   #  epix_alc1:
   #    droplet:

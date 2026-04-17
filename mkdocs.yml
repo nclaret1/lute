@@ -6,7 +6,13 @@ nav:
   - Quick Start: "quick_start.md"
   - Usage Manual:
       - Task Configuration: "usage/configuration.md"
+      - Installation: "usage/installation.md"
       - Running LUTE: "usage/running_lute.md"
+      - A complete simple example: "usage/hello_world.md"
+      - Task Documentation:
+          - Using smalldata_tools: "usage/tasks/smalldata_tools.md"
+          - Converting XTC1 to XTC2: "usage/tasks/xtc1_to_xtc2_conversion.md"
+          - Running BayFAI: "usage/tasks/bayfai.md"
   - Developer Documentation:
       - Architecture and Execution Model: "development/architecture.md"
       - Creating a new Task:
@@ -15,21 +21,28 @@ nav:
           - Third Party: "development/new_task/third_party.md"
       - Creating a new Workflow:
           - Overview: "development/creating_workflows.md"
+          - With Maestro: "development/creating_workflows_maestro.md"
           - With Airflow: "development/creating_workflows_airflow.md"
           - Dynamic Run-time Workflows: "development/dynamic_workflows.md"
           #- With Prefect: "development/creating_workflows_prefect.md"
+      - Maestro Documentation: "development/maestro.md"
       - Tests: "development/tests.md"
   - Source Code:
       - managed_tasks: "source/managed_tasks.md"
       - execution:
+          - debug_utils: "source/execution/debug_utils.md"
           - executor: "source/execution/executor.md"
           - ipc: "source/execution/ipc.md"
-          - debug_utils: "source/execution/debug_utils.md"
+          - launch: "source/execution/launch.md"
           - logging: "source/execution/logging.md"
+          - subprocess_utils: "source/execution/subprocess_utils.md"
       - tasks:
           - task: "source/tasks/task.md"
           - tasklets: "source/tasks/tasklets.md"
           - dataclasses: "source/tasks/dataclasses.md"
+          - bayfai: "source/tasks/bayfai.md"
+          - _bayfai: "source/tasks/_bayfai.md"
+          - _bayfai2: "source/tasks/_bayfai2.md"
           - geometry: "source/tasks/geometry.md"
           - _geometry: "source/tasks/_geometry.md"
           - sfx_find_peaks: "source/tasks/sfx_find_peaks.md"
@@ -45,6 +58,7 @@ nav:
       - io:
           - models:
               - base: "source/io/models/base.md"
+              - bayfai: "source/io/models/bayfai.md"
               - geometry: "source/io/models/geometry.md"
               - sfx_find_peaks: "source/io/models/sfx_find_peaks.md"
               - sfx_index: "source/io/models/sfx_index.md"
@@ -54,6 +68,7 @@ nav:
               - validators: "source/io/models/validators.md"
               - tests: "source/io/models/tests.md"
               - mpi_tests: "source/io/models/mpi_tests.md"
+          - calib: "source/io/calib.md"
           - config: "source/io/config.md"
           - db: "source/io/db.md"
           - _db:

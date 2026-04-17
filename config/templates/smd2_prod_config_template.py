@@ -1,20 +1,48 @@
+{%- macro step_parameters(dict_name, detector, data, add_to_ret=True) %}
+{%- if data is mapping %}
+{%- for param_name, param_value in data.items() %}
+        {% if param_value is none -%}
+        {{ dict_name }}["{{ param_name }}"] = None
+        {% else -%}
+        {{ dict_name }}["{{ param_name }}"] = {{ param_value | pprint }}
+        {% endif %}
+{%- endfor %}
+        {% if add_to_ret -%}
+        ret_dict["{{ detector }}"] = {{ dict_name }}
+        {% endif %}
+{%- else %}
+        # Create list of dicts for {{ detector }}
+        {{ dict_name }}s = []
+
+{%- for data_dict in data %}
+        # Create a dict for this set
+        {{ dict_name }} = {}
+
+{{- step_parameters(dict_name, detector, data_dict, False) }}
+        {{ dict_name }}s.append({{ dict_name }})
+
+{%- endfor %}
+
+        # Add list of dicts for {{ detector }} to total dictionary
+        ret_dict["{{ detector }}"] = {{ dict_name }}s
+{%- endif %}
+{%- endmacro -%}
 import numpy as np
 
-# These lists are needed, do not delete them
-# If no detector in a given category, leave the corresponding
-# list empty.
-# detectors = ['jungfrau','epix100']
 {%- if detnames is defined and detnames %}
 detectors = {{ detnames }}
 {% else %}
 detectors = []
 {% endif %}
+{%- if xdetectors is defined and xdetectors %}
+xdetectors = {{ xdetectors }}
+{% else %}
+{% endif %}
 {%- if integrating_detectors is defined and integrating_detectors %}
 integrating_detectors = {{ integrating_detectors }}
-{% else %}
-integrating_detectors = []
 {% endif %}
 
+{%- if IntgParams is defined and IntgParams %}
 def get_intg(run):
     """
     Returns
@@ -42,26 +70,33 @@ def get_intg(run):
         ...
 {% endif %}
     return intg_main, intg_addl
+{% endif %}
 
 {%- if getROIs is defined and getROIs %}
 def getROIs(run):
     ret_dict = {}
 
-    jungfrau_roi = {"thresADU": None, "writeArea": True, "calcPars": False, "ROI": None}
-    epix100_roi = {"thresADU": None, "writeArea": True, "calcPars": False, "ROI": None}
-
     if run > 0:
         roi_dict = {}
 {% for detector, params in getROIs.items() %}
-        roi_dict["ROIs"] = {{ params["ROIs"] }}
-        roi_dict["writeArea"] = {{ params["writeArea"] }}
-        roi_dict["thresADU"] = {{ params["thresADU"] }}
-        roi_dict["calcPars"] = {{ params["calcPars"] }}
-
-        ret_dict["{{ detector }}"] = roi_dict
+{{- step_parameters("roi_dict", detector, params) }}
 {% endfor %}
-        ...
     return ret_dict
+{% endif %}
+
+{%- if getDetImages is defined and getDetImages %}
+def getDetImages(run):
+    ...
+{% endif %}
+
+{%- if getWfIntegrate is defined and getWfIntegrate %}
+def get_wf_integrate(run):
+    ...
+{% endif %}
+
+{%- if getWfHitfinder is defined and getWfIntegrate %}
+def get_wf_hitfinder(run):
+    ...
 {% endif %}
 
 
@@ -86,9 +121,14 @@ def get_droplet2photon(run):
         d2p_dict["nData"] = None
         d2p_dict["get_photon_img"] = False
 
-        ret_dict["epix100"] = d2p_dict
+        ret_dict["{{ detector }}"] = d2p_dict
 {% endfor %}
     return ret_dict
+{% endif %}
+
+{%- if getWfSVD is defined and getWfIntegrate %}
+def get_wf_svd(run):
+    ...
 {% endif %}
 
 {%- if getDropletParams is defined and getDropletParams %}
@@ -99,15 +139,7 @@ def get_droplet(run):
     if run>0:
         droplet_dict = {}
 {% for detector, params in getDropletParams.items() %}
-        droplet_dict['name'] = {{ params['name'] }}
-        #droplet_dict['mask'] = None # have to pass full array
-        droplet_dict['threshold'] = {{ params['threshold'] }}
-        droplet_dict['thresholdLow'] = {{ params['thresholdLow'] }}
-        droplet_dict['thresADU'] = {{ params['thresADU'] }}
-        droplet_dict['useRms'] = {{ params['useRms'] }}
-        droplet_dict['nData'] = {{ params['nData'] }}
-
-        ret_dict['{{ detector }}'] = droplet_dict
+{{- step_parameters("droplet_dict", detector, params) }}
 {% endfor %}
     return ret_dict
 {% endif %}
@@ -120,15 +152,32 @@ def get_azav(run):
     if run>0:
         az_dict = {}
 {% for detector, params in getAzIntParams.items() %}
-        az_dict['eBeam'] = {{ params['eBeam'] }}
-        az_dict['center'] = {{ params['center'] }}
-        az_dict['dis_to_sam'] = {{ params['dis_to_sam'] }}
-        az_dict['tx'] = {{ params['tx'] }}
-        az_dict['ty'] = {{ params['ty'] }}
-
-        ret_dict['{{ detector }}'] = az_dict
+        {%- if 'userMask' in params %}
+        az_dict['userMask'] = np.load("{{ params['userMask'] }}")
+        {{- step_parameters("az_dict", detector, params|rejectattr("userMask")) }}
+        {% else %}
+        {{- step_parameters("az_dict", detector, params) }}
+        {% endif %}
 {% endfor %}
     return ret_dict
+{% endif %}
+
+{%- if getAzIntPyFAIParams is defined and getAzIntPyFAIParams %}
+def get_azav_pyfai(run):
+    if isinstance(run,str):
+        run=int(run)
+    ret_dict = {}
+    if run>0:
+        az_dict = {}
+{% for detector, params in getAzIntPyFAIParams.items() %}
+        {{- step_parameters("az_dict", detector, params) }}
+{% endfor %}
+    return ret_dict
+{% endif %}
+
+{%- if getPolynomialCorrection is defined and getWfIntegrate %}
+def get_polynomial_correction(run):
+    ...
 {% endif %}
 
 {%- if detSumAlgos is defined and detSumAlgos %}
@@ -137,6 +186,34 @@ def get_sum_algos(run):
     if run > 0:
 {% for detector, params in detSumAlgos.items() %}
         ret_dict['{{ detector }}'] = {{ params }}
+{% endfor %}
+    return ret_dict
+{% endif %}
+
+{%- if getPressioCompression is defined and getPressioCompression %}
+def get_pressio_compression(run):
+    if isinstance(run,str):
+        run=int(run)
+    ret_dict = {}
+    if run>0:
+        pressio_dict = {}
+{% for detector, params in getPressioCompression.items() %}
+        {%- if 'compressor_id' in params %}
+        compressor_id = "{{ params['compressor_id'] }}"
+        {%- if 'compressor_args' in params and 'abs_error_bound' in params['compressor_args'] %}
+        abs_error_bound = {{ params['compressor_args']['abs_error_bound'] }}
+        {%- else %}
+        abs_error_bound = 10
+        {% endif %}
+        pressio_dict['pressio_config'] = {
+            "compressor_id": compressor_id,
+            "compressor_config": {
+                f"{compressor_id}:abs_error_bound": abs_error_bound,
+                f"{compressor_id}:metric": "size",
+            }
+        }
+        ret_dict["{{ detector }}"] = pressio_dict
+        {% endif %}
 {% endfor %}
     return ret_dict
 {% endif %}

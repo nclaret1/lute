@@ -15,3 +15,4 @@ from .nexus import *
 from .xtc import *
 from .cheetah import *
 from .sfx_dr_find_peaks import *
+from .bayfai import *

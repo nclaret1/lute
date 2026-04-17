@@ -4,7 +4,7 @@ title: "Config to run Cheetah task"
 experiment: "xpptut15"
 run: "291"
 date: "2025/09/05"
-lute_version: 0.1      # Do not be change unless need to force older version
+lute_version: 0.2.0      # Do not be change unless need to force older version
 task_timeout: 30
 work_dir: ""
 ...

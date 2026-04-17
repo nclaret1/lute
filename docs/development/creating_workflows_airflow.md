@@ -7,7 +7,7 @@ In addition to the core LUTE package, a number of components are generally invol
 For building and running workflows using SLURM and Airflow, the following components are necessary, and will be described in more detail below:
 - Airflow launch script: `launch_airflow.py`
   - This has a wrapper batch submission script: `submit_launch_airflow.sh` . When running using the ARP (from the eLog), you **MUST** use this wrapper script instead of the Python script directly.
-- SLURM submission script: `submit_slurm.sh`
+- SLURM submission script: `submit_slurm`
 - Airflow operators:
   - `JIDSlurmOperator`
 
@@ -30,6 +30,8 @@ dag_run_data: Dict[str, Union[str, Dict[str, Union[str, int, List[str]]]]] = {
         "lute_params": params,
         "slurm_params": extra_args,
         "workflow": wf_defn,  # Used only for custom DAGs. See below under advanced usage.
+        "run_type": run_type, # str, used for workflow branching. Mostly auto-determined, though can be overridden manually if needed.
+        "is_daq2": is_daq2, # Bool for selection of psana1 or psana2. Auto-determined.
     },
 }
 ```
@@ -38,17 +40,24 @@ Note that the environment variables are used to fill in the appropriate informat
 The script takes a number of parameters:
 
 ```bash
-launch_airflow.py -c <path_to_config_yaml> -w <workflow_name> [--debug] [--test] [-e <exp>] [-r <run>] [SLURM_ARGS]
+launch_airflow.py [-a | --admin] -c <path_to_config_yaml> [-d | --debug] [--test] [--type <TYPE>] -w <workflow_name> [-W <patch_to_dag] [-e <exp>] [-r <run>] [SLURM_ARGS]
 ```
 
-- `-c` refers to the path of the configuration YAML that contains the parameters for each **managed** `Task` in the requested workflow.
-- `-w` is the name of the DAG (workflow) to run. By convention each DAG is named by the Python file it is defined in. (See below).
-  - **NOTE:** For advanced usage, a custom DAG can be provided at **run** time using `-W` (capital W) followed by the path to the workflow instead of `-w`. See below for further discussion on this use case.
-- `--debug` is an optional flag to run all steps of the workflow in debug mode for verbose logging and output.
+- `-a | --admin` Run as admin. Requires extra permissions.
+- `-c | --config` refers to the path of the configuration YAML that contains the parameters for each **managed** `Task` in the requested workflow.
+- `-d | --debug` is an optional flag to run all steps of the workflow in debug mode for verbose logging and output.
 - `--test` is an optional flag which will use the test Airflow instance. By default the script will make requests of the standard production Airflow instance.
-- `-e` is used to pass the experiment name. Needed if not using the ARP, i.e. running from the command-line.
-- `-r` is used to pass a run number. Needed if not using the ARP, i.e. running from the command-line.
-- `SLURM_ARGS` are SLURM arguments to be passed to the `submit_slurm.sh` script which are used for each individual **managed** `Task`. These arguments to do NOT affect the submission parameters for the job running `launch_airflow.py` (if using `submit_launch_airflow.sh` below).
+- `--type` Use to override the `run_type`. Should generally not be used, except for testing.
+- `-w` is the name of the DAG (workflow) to run. By convention each DAG is named by the Python file it is defined in. (See below).
+
+    - **NOTE:** For advanced usage, a custom DAG can be provided at **run** time using `-W` (capital W) followed by the path to the workflow instead of `-w`. See below for further discussion on this use case.
+
+- The following arguments are required only when running from the command line.
+
+    - `-e` is used to pass the experiment name. Needed if not using the ARP, i.e. running from the command-line.
+    - `-r` is used to pass a run number. Needed if not using the ARP, i.e. running from the command-line.
+
+- `SLURM_ARGS` are SLURM arguments to be passed to the `submit_slurm` script which are used for each individual **managed** `Task`. These arguments to do NOT affect the submission parameters for the job running `launch_airflow.py` (if using `submit_launch_airflow.sh` below).
 
 
 #### Lifetime
@@ -56,20 +65,20 @@ launch_airflow.py -c <path_to_config_yaml> -w <workflow_name> [--debug] [--test]
 This script will run for the entire duration of the **workflow (DAG)**. After making the initial request of Airflow to launch the DAG, it will enter a status update loop which will keep track of each individual job (each job runs one managed `Task`)  submitted by Airflow. At the end of each job it will collect the log file, in addition to providing a few other status updates/debugging messages, and append it to its own log. This allows all logging for the entire workflow (DAG) to be inspected from an individual file. This is particularly useful when running via the eLog, because only a single log file is displayed.
 
 ### `submit_launch_airflow.sh`
-This script is only necessary when running from the eLog using the ARP. The initial job submitted by the ARP can not have a duration of longer than 30 seconds, as it will then time out. As the `launch_airflow.py` job will live for the entire duration of the workflow, which is often much longer than 30 seconds, the solution was to have a wrapper which submits the `launch_airflow.py` script to run on the S3DF batch nodes. That said, it is generally advantageous to use it even when running from the command-line as it creates a SLURM job for the `launch_airflow.py` script, instead of requiring interactively running it. 
+This script is only necessary when running from the eLog using the ARP. The initial job submitted by the ARP can not have a duration of longer than 30 seconds, as it will then time out. As the `launch_airflow.py` job will live for the entire duration of the workflow, which is often much longer than 30 seconds, the solution was to have a wrapper which submits the `launch_airflow.py` script to run on the S3DF batch nodes. That said, it is generally advantageous to use it even when running from the command-line as it creates a SLURM job for the `launch_airflow.py` script, instead of requiring interactively running it.
 
 Usage of this script is mostly identical to `launch_airflow.py`. All the arguments are passed transparently to the underlying Python script with the exception of the first argument which **must** be the location of the underlying `launch_airflow.py` script. The wrapper will simply launch a batch job using minimal resources (1 core). While the primary purpose of the script is to allow running from the eLog, it is also an useful wrapper generally, to be able to submit the previous script as a SLURM job.
 
 Usage:
 
 ```bash
-submit_launch_airflow.sh /path/to/launch_airflow.py -c <path_to_config_yaml> -w <workflow_name> [--debug] [--test] [-e <exp>] [-r <run>] [SLURM_ARGS]
+submit_launch_airflow.sh /path/to/launch_airflow.py [-a | --admin] -c <path_to_config_yaml> [-d | --debug] [--test] [--type <TYPE>] -w <workflow_name> [-W <patch_to_dag] [-e <exp>] [-r <run>] [SLURM_ARGS]
 ```
 
-### `submit_slurm.sh`
+### `submit_slurm`
 Launches a job on the S3DF batch nodes using the SLURM job scheduler. This script launches a single **managed** `Task` at a time. The usage is as follows:
 ```bash
-submit_slurm.sh -c <path_to_config_yaml> -t <MANAGED_task_name> [--debug] [SLURM_ARGS ...]
+submit_slurm -c <path_to_config_yaml> -t <MANAGED_task_name> [--debug] [SLURM_ARGS ...]
 ```
 As a reminder the **managed** `Task` refers to the `Executor`-`Task` combination. The script does not parse any SLURM specific parameters, and instead passes them transparently to SLURM. At least the following two SLURM arguments must be provided:
 ```bash
@@ -78,7 +87,7 @@ As a reminder the **managed** `Task` refers to the `Executor`-`Task` combination
 ```
 Generally, resource requests will also be included, such as the number of cores to use. A complete call may look like the following:
 ```bash
-submit_slurm.sh -c /sdf/data/lcls/ds/hutch/experiment/scratch/config.yaml -t Tester --partition=milano --account=lcls:experiment --ntasks=100 [...]
+submit_slurm -c /sdf/data/lcls/ds/hutch/experiment/scratch/config.yaml -t Tester --partition=milano --account=lcls:experiment --ntasks=100 [...]
 ```
 
 When running a workflow using the `launch_airflow.py` script, each step of the workflow will be submitted using this script.
@@ -86,7 +95,7 @@ When running a workflow using the `launch_airflow.py` script, each step of the w
 ## Operators
 `Operator`s are the objects submitted as individual steps of a DAG by Airflow. They are conceptually linked to the idea of a task in that each task of a workflow is generally an operator. Care should be taken, not to confuse them with LUTE `Task`s or **managed** `Task`s though. There is, however, usually a one-to-one correspondance between a `Task` and an `Operator`.
 
-Airflow runs on a K8S cluster which has no access to the experiment data. When we ask Airflow to run a DAG, it will launch an `Operator` for each step of the DAG. However, the `Operator` itself cannot perform productive analysis without access to the data. The solution employed by `LUTE` is to have a limited set of `Operator`s which do not perform analysis, but instead request that a `LUTE` **managed** `Task`s be submitted on the batch nodes where it can access the data. There may be small differences between how the various provided `Operator`s do this, but in general they will all make a request to the **job interface daemon** (JID) that a new SLURM job be scheduled using the `submit_slurm.sh` script described above.
+Airflow runs on a K8S cluster which has no access to the experiment data. When we ask Airflow to run a DAG, it will launch an `Operator` for each step of the DAG. However, the `Operator` itself cannot perform productive analysis without access to the data. The solution employed by `LUTE` is to have a limited set of `Operator`s which do not perform analysis, but instead request that a `LUTE` **managed** `Task`s be submitted on the batch nodes where it can access the data. There may be small differences between how the various provided `Operator`s do this, but in general they will all make a request to the **job interface daemon** (JID) that a new SLURM job be scheduled using the `submit_slurm` script described above.
 
 Therefore, running a typical Airflow DAG involves the following steps:
 
@@ -110,6 +119,28 @@ Currently, the following `Operator`s are maintained:
 - `require_partition`: This option is a string that forces the use of a specific S3DF partition for the **managed** `Task` submitted by the Operator. E.g. typically a LCLS user will use `--partition=milano` for CPU-based workflows; however, if a specific `Task` requires a GPU you may use `JIDSlurmOperator("MyTaskRunner", require_partition="ampere")` to override the partition for that single `Task`.
 - `custom_slurm_params`: You can provide a string of parameters which will be used in its entirety to replace any and all default arguments passed by the launch script. This method is not recommended for general use and is mostly used for dynamic DAGs described at the end of the document.
 
+#### Trigger rules: Notable arguments from the base classes
+Airflow provides a number of `Trigger Rules` which determine how/when an `Operator` will run based on the behaviour of the upstream operators. Remember, each `Operator` corresponds one-to-one with a a `LUTE` **managed** `Task`. So, the trigger rules determine how/whether a **managed** `Task` will execute.
+
+In particular, the main rules are the following:
+
+- `all_success`: All upstream succeeded (default)
+- `all_failed`: All upstream failed or have the special `upstream_failed` status (didn't run because something ahead of it failed)
+- `all_skipped`: All upstream were skipped
+- `one_failed`: Runs as soon as at least one upstream failed
+- `one_success`: Runs as soon as at least one upstream succeeds
+- `none_failed`: All upstream succeeded or were skipped
+- `none_failed_min_one_success` = All upstream skipped or succeeded, but at least one succeeded
+- `none_skipped` = Nothing has been skipped
+- `always`: This Operator will always run regardless of whether previous Operators succeeded or not.
+
+These rules can be passed to the operator as a string to the `JIDSlurmOperator` intializer. E.g. to set it to `none_failed`:
+
+```py
+my_operator: JIDSlurmOperator = JIDSlurmOperator(..., trigger_rule="none_failed")
+```
+
+In general, the default rule (`all_success`), is a good starting point for most linear DAGs and those that have components running in parallel. You only run downstream `Operator`s if all the upstream ones are successful. However, you may want to change the rule when you begin to introduce more complicated logic, like branching. An example is discussed [below](#branching-based-on-run-type).
 
 ## Creating a new workflow
 Defining a new workflow involves creating a **new** module (Python file) in the directory `workflows/airflow`, creating a number of `Operator` instances within the module, and then drawing the connectivity between them. At the top of the file an Airflow DAG is created and given a name. By convention all `LUTE` workflows use the name of the file as the name of the DAG. The following code can be copied exactly into the file:
@@ -180,7 +211,7 @@ task1 >> task3
 
 As each DAG is defined in pure Python, standard control structures (loops, if statements, etc.) can be used to create more complex workflow arrangements.
 
-**Note:** Your DAG will not be available to the production Airflow instance until your PR including the file you have defined is merged! Once merged the file will be synced with the Airflow instance and can be run using the scripts described earlier in this document. For testing it is generally preferred that you run each step of your DAG individually using the `submit_slurm.sh` script and the independent **managed** `Task` names. If, however, you want to test the behaviour of Airflow itself (in a modified form) you can either use the "dynamic" run-time DAGs described on the [dynamic workflows page](dynamic_workflows.md), or work against the test Airflow instance described below.
+**Note:** Your DAG will not be available to the production Airflow instance until your PR including the file you have defined is merged! Once merged the file will be synced with the Airflow instance and can be run using the scripts described earlier in this document. For testing it is generally preferred that you run each step of your DAG individually using the `submit_slurm` script and the independent **managed** `Task` names. If, however, you want to test the behaviour of Airflow itself (in a modified form) you can either use the "dynamic" run-time DAGs described on the [dynamic workflows page](dynamic_workflows.md), or work against the test Airflow instance described below.
 
 ### `psdag` repository and the production vs test Airflow instances
 
@@ -207,11 +238,46 @@ After pushing, your DAG (or updates) should be available via the `test` Airflow 
 
 If you need permission to access the `psdag` repository, reach out to the core maintainers.
 
+
+### DAG Connectivity
+The Airflow syntactic sugar for chaining `Operator`s together into a DAG (`>>`) is convenient, but it can sometimes make connectivities slightly less obvious. It is worth taking a second to examine your connectivities when writing your DAG.
+
+As an example, consider the following DAG:
+
+```py
+A >> B >> [C, D] >> E >> F >> G
+```
+
+This produces a DAG with the following connectivity:
+
+```bash
+        /---- C ----\
+A ---- B             E ---- F ---- G
+        \---- D ----/
+```
+
+Due to the connection of both `C` and `D` to `E`, trigger rules may become important depending on what it is you intend. See the branching discussion in the next section.
+
+As a comparison, you may have the following DAG instead:
+
+```py
+A >> B >> [C, D]
+C >> E >> F >> G
+```
+
+Which produces the following connectivity:
+
+```bash
+        /---- C ---- E ---- F ---- G
+A ---- B
+        \---- D
+```
+
 ### More Advanced Patterns
-#### Branching based on run type
+#### Branching based on run type or LCLS1/LCLS2 DAQ
 Additional run time information can be passed along in the Airflow context on a submission-by-submission basis. This information can be used to implement more complex logic into the DAG definition.
 
-A current example of this is the `run_type` parameter. This would usually be a special signifier provided to the eLog at the time the DAQ starts recording a run to identify the type of data the run contains. The Airflow launch script supports optionally overriding the type, either for testing, or for some other specific behaviour implemented in the workflow.
+An example of this is the `run_type` parameter. This would usually be a special signifier provided to the eLog at the time the DAQ starts recording a run to identify the type of data the run contains. The Airflow launch script supports optionally overriding the type, either for testing, or for some other specific behaviour implemented in the workflow.
 
 An example of how to make use of this information to create branches in the DAG can be found in the `test_type_branch` DAG. This is reproduced below for ease of access.
 
@@ -263,3 +329,22 @@ The key features to note in this workflow are:
 
 - The `test_branch_func` branching task returns a `str` which matches the `task_id` of the next task to run. In this case it is either `BinaryTester` or `BinaryErrTester` (these correspond to the operator objects `binary_tester` and `binary_err_tester` respectively).
 - The `trigger_rule` was changed on all of the tasks downstream of the branching operation to be `none_failed`. By default the trigger rule is `all_succeed`, which means that all of the tasks that are upstream need to run, and be successful. In this case, since we are branching, one of the two tasks will be skipped. By specifying a trigger rule of `none_failed`, we say that downstream tasks can run as long as everything upstream was successful, or it was skipped.
+
+
+In addition to `run_type`, you will also find the `is_daq2` `bool` present in the `dag_run` portion of the context. You can access this use:
+
+```py
+@task #....
+def my_task_func(**context):
+    if "dag_run" in context:
+        conf: Dict[str, Any] = context["dag_run"].conf
+        if "is_daq2" in conf:
+            if conf["is_daq2"]:
+                # LCLS2 behaviour
+                ...
+            else:
+                # LCLS1 behaviour
+                ...
+```
+
+**NOTE:** You should always guard accessing these attributes with checks for their presence. They are newer features, and older installations of LUTE may not send them to Airflow.

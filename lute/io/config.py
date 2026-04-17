@@ -16,9 +16,10 @@ Exceptions:
 __all__ = ["parse_config"]
 __author__ = "Gabriel Dorlhiac"
 
+import os
 import re
 import warnings
-from typing import List, Dict, Iterator, Any
+from typing import List, Dict, Iterator, Any, Union, Optional
 
 import pprint
 import yaml
@@ -172,7 +173,8 @@ def parse_config(task_name: str = "test", config_path: str = "") -> TaskParamete
         ValidationError: Raised if there are problems with the configuration
             file. Passed through from Pydantic.
     """
-    task_config_name: str = f"{task_name}Parameters"
+    cleaned_task_name: str = re.sub(r"_\d+$", "", task_name)
+    task_config_name: str = f"{cleaned_task_name}Parameters"
 
     with open(config_path, "r") as f:
         docs: Iterator[Dict[str, Any]] = yaml.load_all(stream=f, Loader=yaml.FullLoader)

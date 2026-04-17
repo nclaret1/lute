@@ -5,38 +5,58 @@ Classes:
     which converst lcls1 style xtc files to lcls2 style.
 """
 
-from pydantic import Field
+from typing import Dict, List, Optional, Tuple, Union
+
+from pydantic import BaseModel, Field
+
 from lute.io.models.base import TaskParameters
+
+
+class ConversionSpecification(BaseModel):
+    xtc2_attr_name: str = Field(
+        description="The name this field will have in the XTC2 file."
+    )
+    object_name: str = Field(
+        description=(
+            "The name used to access the object in psana1. E.g. `epix10k2M` if you "
+            "would create the object as `psana.Detector('epix10k2M')`"
+        )
+    )
+    object_type: str = Field(
+        description="The psana1 object type used. E.g. `psana.Detector`"
+    )
+    object_field_name: Union[str, Tuple[str, str]] = Field(
+        description=(
+            "The field (or fields) on the constructed psana1 object used to get "
+            "the per event data. E.g. `'calib'` if using `det.calib(evt)`. "
+            "Or `('get', 'ebeamPhotonEnergy')` if using "
+            "`det.get(evt).ebeamPhotonEnergy()`"
+        )
+    )
 
 
 class ConvertXtc1to2Parameters(TaskParameters):
     """Parameters for the xtc conversion Task."""
 
-    exp: str = Field("amo06516", description="Experiment name", flag_type="--")
-    run: str = Field("90", description="Run number", flag_type="--")
-    mode: str = Field("idx", description="Mode", flag_type="--")
-    detector: str = Field("pnccdFront", description="Detector", flag_type="--")
-    node_id: str = Field("1", description="Node ID for the detector", flag_type="--")
-    resolution: str = Field(
-        "4x512x512",
-        description="Detector channels and resolution",
-        flat_type="--",
-    )
-    geometry: str = Field(
-        "/sdf/data/lcls/ds/xpp/xpptut15/calib/PNCCD::CalibV1/Camp.0:pnCCD.0/geometry/290-292.data",
-        description="Geometry file",
-        flag_type="--",
-    )
+    node_id: str = Field(default="1", description="Node ID for the detector")
     eventfile: str = Field(
-        "/sdf/scratch/users/k/kmecseki/test.csv",
-        description="Csv file with event numbers",
-        flag_type="--",
+        default="",
+        description="CSV file with event numbers. Otherwise will process all events.",
     )
-    verify: str = Field(
-        "True", description="Verify data - for small data only", flag_type="--"
+    nevents: Optional[int] = Field(
+        default=None,
+        description=(
+            "Optionally specify the number of events to use. If providing eventfile "
+            "as well, that option will supercede this one."
+        ),
     )
-    testfile: str = Field(
-        "True",
-        description="Path to test output HDF5 file (only if --verify=1)",
-        flag_type="--",
+    output_file: str = Field(
+        description="Where to write the output XTC2 file.", is_result=True
+    )
+    # xtc1_access_pattern: Dict[str, List[DataSpec]] = Field(
+    xtc1_access_pattern: Dict[str, List[ConversionSpecification]] = Field(
+        description=(
+            "Provides information for how to access the data in XTC1. The top level "
+            "keys will be used as the detector names in the XTC2 data."
+        ),
     )

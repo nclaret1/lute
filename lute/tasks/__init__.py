@@ -20,7 +20,7 @@ class TaskNotFoundError(Exception):
     been registered with the `import_task` function below.
     """
 
-    ...
+    pass  # fmt: pass
 
 
 def import_task(task_name: str) -> Type[Task]:
@@ -56,10 +56,10 @@ def import_task(task_name: str) -> Type[Task]:
 
         return TestWriteOutput
 
-    if task_name == "FindPeaksPyAlgos":
-        from .sfx_find_peaks import FindPeaksPyAlgos
+    if task_name == "FindPeaksSFX":
+        from .sfx_find_peaks import FindPeaksSFX
 
-        return FindPeaksPyAlgos
+        return FindPeaksSFX
 
     if task_name == "ConcatenateStreamFiles":
         from .sfx_index import ConcatenateStreamFiles
@@ -86,6 +86,11 @@ def import_task(task_name: str) -> Type[Task]:
 
         return TestMultiNodeCommunication
 
+    if task_name == "BayFAI":
+        from .bayfai import BayFAI
+
+        return BayFAI
+
     if task_name == "OptimizeAgBhGeometryExhaustive":
         from .geometry import OptimizeAgBhGeometryExhaustive
 
@@ -110,4 +115,9 @@ def import_task(task_name: str) -> Type[Task]:
         from .sfx_dr_find_peaks import DrFindPeaksPyAlgos
 
         return DrFindPeaksPyAlgos
+    if task_name == "TestRequest":
+        from .test import TestRequest
+
+        return TestRequest
+
     raise TaskNotFoundError

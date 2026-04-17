@@ -1,5 +1,3 @@
-#!/sdf/group/lcls/ds/ana/sw/conda1/inst/envs/ana-4.0.62-py3/bin/python
-
 """Script submitted by Automated Run Processor (ARP) to trigger an Airflow DAG.
 
 This script is submitted by the ARP to the batch nodes. It triggers Airflow to
@@ -8,20 +6,26 @@ begin running the tasks of the specified directed acyclic graph (DAG).
 
 __author__ = "Gabriel Dorlhiac"
 
-import argparse
-import collections
-import datetime
-import getpass
 import logging
 import os
 import sys
-import uuid
 import time
-from typing import Any, Dict, List, Optional, TypedDict, Union
+import uuid
+from typing import Any, Dict, List, Optional, TypedDict
 
 import requests
 from requests.auth import HTTPBasicAuth
 from requests.exceptions import HTTPError
+
+from lute.execution.launch import (
+    get_base_launch_parser,
+    setup_launch_env,
+    retrieve_run_info,
+    get_lute_launch_config,
+    LuteParams,
+    LuteLaunchConfig,
+    EnvLaunchInfo,
+)
 
 # Requests, urllib have lots of debug statements. Only set level for this logger
 logger: logging.Logger = logging.getLogger("Launch_Airflow")
@@ -36,26 +40,9 @@ else:
     logger.setLevel(logging.INFO)
 
 
-class DagRunConf(TypedDict):
-    experiment: str
-    run_id: str
-    JID_UPDATE_COUNTERS: Optional[str]
-    ARP_ROOT_JOB_ID: str
-    ARP_LOCATION: str
-    Authorization: str
-    user: str
-    lute_location: str
-    kerb_file: Optional[str]
-    lute_params: Dict[str, Union[str, bool]]
-    slurm_params: List[str]
-    workflow: Dict[str, Any]
-    run_type: Optional[str]
-    is_daq2: Optional[bool]
-
-
 class DagRunData(TypedDict):
     dag_run_id: str
-    conf: DagRunConf
+    conf: LuteLaunchConfig
 
 
 def _retrieve_pw(instance: str = "prod", is_admin: bool = False) -> str:
@@ -76,128 +63,26 @@ def _retrieve_pw(instance: str = "prod", is_admin: bool = False) -> str:
     return pw
 
 
-def _request_arp_token(exp: str, lifetime: int = 300) -> str:
-    """Request an ARP token via Kerberos endpoint.
-
-    A token is required for job submission.
-
-    Args:
-        exp (str): The experiment to request the token for. All tokens are
-            scoped to a single experiment.
-
-        lifetime (int): The lifetime, in minutes, of the token. After the token
-            expires, it can no longer be used for job submission. The maximum
-            time you can request is 480 minutes (i.e. 8 hours). NOTE: since this
-            token is used for the entirety of a workflow, it must have a lifetime
-            equal or longer than the duration of the workflow's execution time.
-    """
-    from kerberos import GSSError  # type: ignore
-    from krtc import KerberosTicket  # type: ignore
-
-    try:
-        krbheaders: Dict[str, str] = KerberosTicket(
-            "HTTP@pswww.slac.stanford.edu"
-        ).getAuthHeaders()
-    except GSSError:
-        logger.info(
-            "Cannot proceed without credentials. Try running `kinit` from the command-line."
-        )
-        raise
-    base_url: str = "https://pswww.slac.stanford.edu/ws-kerb/lgbk/lgbk"
-    token_endpoint: str = (
-        f"{base_url}/{exp}/ws/generate_arp_token?token_lifetime={lifetime}"
-    )
-    resp: requests.models.Response = requests.get(token_endpoint, headers=krbheaders)
-    resp.raise_for_status()
-    token: str = resp.json()["value"]
-    formatted_token: str = f"Bearer {token}"
-    return formatted_token
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        prog="trigger_airflow_lute_dag",
-        description="Trigger Airflow to begin executing a LUTE DAG.",
-        epilog="Refer to https://github.com/slac-lcls/lute for more information.",
-    )
+def main() -> None:
+    parser = get_base_launch_parser("Trigger Airflow to begin executing a LUTE DAG.")
     parser.add_argument(
         "-a", "--admin", help="Run as admin. Requires permissions.", action="store_true"
     )
-    parser.add_argument("-c", "--config", type=str, help="Path to config YAML file.")
-    parser.add_argument("-d", "--debug", help="Run in debug mode.", action="store_true")
     parser.add_argument(
         "--test", help="Use test Airflow instance.", action="store_true"
     )
     parser.add_argument(
-        "--type",
-        help=(
-            "Provide a run type to describe this workflow submission. "
-            "Some workflows may use a run type/tag to determine branching e.g. "
-            "This overrides the eLog type provided by the DAQ (if present)."
-        ),
-        type=str,
-        default="",
-    )
-    parser.add_argument(
         "-w", "--workflow", type=str, help="Workflow to run.", default="test"
     )
-    parser.add_argument(
-        "-W",
-        "--workflow_defn",
-        type=str,
-        help="Path to a YAML file with workflow.",
-        default="",
-    )
-    # Optional arguments for when running from command-line
-    parser.add_argument(
-        "-e",
-        "--experiment",
-        type=str,
-        help="Provide an experiment if not running with ARP.",
-        required=False,
-    )
-    parser.add_argument(
-        "-r",
-        "--run",
-        type=str,
-        help="Provide a run number if not running with ARP.",
-        required=False,
-    )
 
-    args: argparse.Namespace
-    extra_args: List[str]  # Should contain all SLURM arguments!
     args, extra_args = parser.parse_known_args()
-    # Check if was submitted from ARP - look for token
-    use_kerberos: bool = (
-        True  # Always copy kerberos ticket so non-active experiments can work.
-    )
-    cache_file: Optional[str] = os.getenv("KRB5CCNAME")
-    if (
-        os.getenv("Authorization") is None
-        or os.getenv("EXPERIMENT") is None
-        or os.getenv("RUN_NUM") is None
-    ):
-        if cache_file is None:
-            logger.info("No Kerberos cache. Try running `kinit` and resubmitting.")
-            sys.exit(-1)
 
-        if args.experiment is None or args.run is None:
-            logger.info(
-                (
-                    "You must provide a `-e ${EXPERIMENT}` and `-r ${RUN_NUM}` "
-                    "if not running with the ARP!\n"
-                    "If you submitted this from the eLog and are seeing this error "
-                    "please contact the maintainers."
-                )
-            )
-            sys.exit(-1)
-        os.environ["EXPERIMENT"] = args.experiment
-        os.environ["RUN_NUM"] = args.run
+    launch_info: EnvLaunchInfo = setup_launch_env(args)
+    experiment: str = launch_info["experiment"]
+    run_num: str = launch_info["run_num"]
+    jid_authorization: str = launch_info["authorization"]
+    cache_file: Optional[str] = launch_info["kerb_file"]
 
-        os.environ["Authorization"] = _request_arp_token(args.experiment)
-        os.environ["ARP_JOB_ID"] = uuid.uuid4().hex[:24]
-
-    wf_name: str
     use_custom_defn: bool
     if args.workflow_defn:
         wf_name = "test_dynamic"
@@ -240,7 +125,7 @@ if __name__ == "__main__":
     )
     resp.raise_for_status()
 
-    params: Dict[str, Union[str, bool]] = {
+    params: LuteParams = {
         "config_file": args.config,
         "debug": args.debug,
     }
@@ -293,70 +178,22 @@ if __name__ == "__main__":
         resp.raise_for_status()
         logger.debug("Re-parsed DAG for setup with new workflow.")
 
-    # Experiment, run #, and ARP env variables come from ARP submission only
-    # We override above or exit if we cannot, so we cast here
-    experiment: Optional[str] = os.getenv("EXPERIMENT")
-    run_num: Optional[str] = os.getenv("RUN_NUM")
-    arp_job_id: Optional[str] = os.getenv("ARP_JOB_ID")
-    jid_authorization: Optional[str] = os.getenv("Authorization")
-    assert isinstance(experiment, str)
-    assert isinstance(run_num, str)
-    assert isinstance(arp_job_id, str)
-    assert isinstance(jid_authorization, str)
+    run_type, is_daq2 = retrieve_run_info(
+        experiment, run_num, jid_authorization, args.type
+    )
 
-    elog_auth: Dict[str, str] = {
-        "Authorization": jid_authorization,
-    }
-    base_url: str = "https://pswww.slac.stanford.edu/ws-jwt/lgbk/lgbk"
-    run_doc_endpoint: str = f"{experiment}/ws/runs/{run_num}"
-    run_doc_url: str = f"{base_url}/{run_doc_endpoint}"
-    resp = requests.get(run_doc_url, headers=elog_auth)
-
-    run_type: str
-    is_daq2: Optional[bool] = None
-    if resp.status_code != 200:
-        logger.warning(
-            "Unable to retrieve run document! No `run_type` information will be used! "
-            "No information about psana1/psana2 can be retrieved. "
-            "Workflow may be able to continue but this could point to issues with "
-            "API access that lead to problems downstream."
-        )
-        run_type = "UNKNOWN"
-    else:
-        if args.type != "":
-            run_type = args.type
-        else:
-            # If API request succeeds `type` should always be defined
-            run_type = resp.json()["value"]["type"]
-        # Try checking for "psana1" vs "psana2" by searching for "drp" in detector names
-        param_keys: collections.abc.KeysView = resp.json()["value"]["params"].keys()
-        for key in param_keys:
-            if "/drp/" in key:
-                # Detectors in LCLS2 DAQ are sent to eLog as "DAQ Detectors/drp/<name>"
-                # In LCLS1 they are sent as "DAQ Detector/<name>"
-                is_daq2 = True
-                break
-        else:
-            is_daq2 = False
+    conf: LuteLaunchConfig = get_lute_launch_config(
+        launch_info=launch_info,
+        run_type=run_type,
+        is_daq2=is_daq2,
+        lute_params=params,
+        slurm_params=extra_args,
+        workflow_defn=wf_defn,
+    )
 
     dag_run_data: DagRunData = {
         "dag_run_id": str(uuid.uuid4()),
-        "conf": {
-            "experiment": experiment,
-            "run_id": f"{run_num}_{datetime.datetime.utcnow().isoformat()}",
-            "JID_UPDATE_COUNTERS": os.getenv("JID_UPDATE_COUNTERS"),
-            "ARP_ROOT_JOB_ID": arp_job_id,
-            "ARP_LOCATION": os.getenv("ARP_LOCATION", "S3DF"),
-            "Authorization": jid_authorization,
-            "user": getpass.getuser(),
-            "lute_location": os.path.abspath(f"{os.path.dirname(__file__)}/.."),
-            "kerb_file": cache_file,
-            "lute_params": params,
-            "slurm_params": extra_args,
-            "workflow": wf_defn,  # Only used for custom defined workflows.
-            "run_type": run_type,
-            "is_daq2": is_daq2,  # True if LCLS2 DAQ, False if LCLS1 DAQ, None if undetermined
-        },
+        "conf": conf,
     }
 
     resp = requests.post(
@@ -462,20 +299,23 @@ if __name__ == "__main__":
         logger.info(f"DAG exited: {dag_state}")
         break
 
-    if use_kerberos:
-        # We had to do some funny business to get Kerberos credentials...
-        # Cleanup now that we're done
-        logger.debug("Removing duplicate Kerberos credentials.")
-        # This should be defined if we get here
-        # Format is FILE:/.../...
-        if cache_file is not None:
-            try:
-                os.remove(cache_file[5:])
-                os.rmdir(f"{os.path.expanduser('~')}/.tmp_cache")
-            except FileNotFoundError:
-                logger.error("No cache file found to remove.")
+    # We had to do some funny business to get Kerberos credentials...
+    # Cleanup now that we're done
+    logger.debug("Removing duplicate Kerberos credentials.")
+    # This should be defined if we get here
+    # Format is FILE:/.../...
+    if cache_file is not None:
+        try:
+            os.remove(cache_file[5:])
+            os.rmdir(f"{os.path.expanduser('~')}/.tmp_cache")
+        except FileNotFoundError:
+            logger.error("No cache file found to remove.")
 
     if dag_state == "failed":
         sys.exit(1)
     else:
         sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

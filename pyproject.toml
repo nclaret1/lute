@@ -1,0 +1,228 @@
+[build-system]
+requires = ["numpy", "mypy", "meson-python", "pybind11", "meson>=1.10.1"]
+build-backend = "mesonpy"
+
+[project]
+name = "lute-lcls"
+description="LCLS Unified Task Executor."
+requires-python = ">=3.8"
+dynamic = ["version"]
+dependencies = [
+    "pyyaml",
+    "pydantic>1.10.0,<2",
+    "numpy",
+    "requests",
+    "zmq",
+    "jinja2",
+]
+authors = [
+    { name = "psrel", email = "psrel@slac.stanford.edu" },
+]
+license = { text = "BSD-3-Clause" }
+readme = "README.md"
+urls = { Homepage = "https://github.com/slac-lcls/lute" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: POSIX :: Linux",
+]
+
+[tool.meson-python.args]
+# Need to do this.... I couldn't for the life of me figure out how to get meson
+# meson-python and the CMake projects to work well together for installing the
+# shared library...
+install = ['--skip-subprojects', 'spdlog']
+
+[tool.cibuildwheel]
+# Build for everything on Linux except:
+# pp* (PyPy)
+# cp36-* (Python 3.6)
+# cp37-* (Python 3.7)
+# *i686 (32-bit builds)
+# Once code updated, will need to exclude: *-win32
+# -- But maestro code is Linux only atm
+skip = ["pp*", "cp36-*", "cp37-*", "*i686"]
+
+# Tests are directly in the GitHub action
+
+# Try to set things up to cache what's possible to make things faster
+build-frontend = { name = "pip", args = ["--no-build-isolation"] }
+
+before-build = [
+    "pip install -U pip",
+    "pip install 'meson>=1.10.1' meson-python ninja numpy pybind11 setuptools",
+    "ccache -z",
+]
+[tool.cibuildwheel.linux]
+before-all = [
+    """
+    if command -v apt-get >/dev/null; then
+        apt-get update && apt-get install -y ccache
+    elif command -v dnf >/dev/null; then
+        dnf install -y ccache
+    elif command -v yum >/dev/null; then
+        yum install -y ccache
+    elif command -v apk >/dev/null; then
+        apk add ccache
+    fi
+    """,
+]
+[tool.cibuildwheel.linux.environment]
+CC = "ccache gcc"
+CXX = "ccache g++"
+CCACHE_DIR = "/project/.ccache"
+
+#[tool.cibuildwheel.macos.environment]
+#CC = "ccache clang"
+#CXX = "ccache clang++"
+#CCACHE_DIR = "/project/.ccache"
+
+#[tool.cibuildwheel.windows.environment]
+#CMAKE_C_COMPILER_LAUNCHER = "sccache"
+#CMAKE_CXX_COMPILER_LAUNCHER = "sccache"
+#SCCACHE_DIR = "/project/.ccache"
+
+[project.optional-dependencies]
+mypy = ["mypy"]
+docs = [
+    "mkdocs",
+    "mkdocstring",
+    "mkdocstring-python",
+    "mkdocs-click",
+    "mkdocs-material",
+    "mkdocs-material-extensions",
+]
+mpi = ["mpi4py"]
+test = ["pytest"]
+
+[project.scripts]
+run_task = "run_task:main"
+subprocess_task = "subprocess_task:main"
+launch_airflow = "launch_scripts.launch_airflow:main"
+launch_prefect = "launch_scripts.launch_prefect:main"
+launch_slurm = "launch_scripts.launch_maestro:main"
+submit_slurm = "launch_scripts.submit_slurm:main"
+## *** NOTE: The following are in different packages in installed directories vs repo
+## I.e. utilties -> lute_utilities
+setup_lute = "lute_utilities.setup.setup_lute:main"
+lute_help = "lute_utilities.help.task_parameters:main"
+dbview = "lute_utilities.dbview.dbview:main"
+
+
+[tool.setuptools.package-data]
+config = [
+    "*.yaml",
+    "templates/*.*"
+]
+
+[tool.setuptools]
+script-files = [
+    "utilities/activate_installation",
+    "launch_scripts/submit_launch_airflow.sh",
+    "launch_scripts/submit_launch_prefect.sh",
+    "launch_scripts/submit_launch_slurm.sh",
+    # "launch_scripts/submit_slurm.sh",
+]
+
+[tool.black]
+line-length = 88
+target-version = ['py39']
+include = '\.pyi?$'
+extend-exclude = '''(
+    .*.sh
+    #| .*.another_extension
+    | README
+)'''
+
+# mypy global options:
+
+
+[tool.ruff]
+# Exclude a variety of commonly ignored directories.
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".ipynb_checkpoints",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pyenv",
+    ".pytest_cache",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    ".vscode",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "site-packages",
+    "venv",
+]
+
+# Same as Black.
+line-length = 88
+indent-width = 4
+include = [
+    "lute/**/*.py",
+    "launch_scripts/*.py",
+    "utilties/**/*.py",
+    "workflows/**/*.py",
+]
+target-version = "py39"
+
+[tool.ruff.lint]
+# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
+# Unlike Flake8, Ruff doesn't enable pycodestyle warnings (`W`) or
+# McCabe complexity (`C901`) by default.
+select = ["E4", "E7", "E9", "F"]
+ignore = []
+
+# Allow fix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = []
+
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.format]
+# Like Black, use double quotes for strings.
+quote-style = "double"
+
+# Like Black, indent with spaces, rather than tabs.
+indent-style = "space"
+
+# Like Black, respect magic trailing commas.
+skip-magic-trailing-comma = false
+
+# Like Black, automatically detect the appropriate line ending.
+line-ending = "auto"
+
+# Enable auto-formatting of code examples in docstrings. Markdown,
+# reStructuredText code/literal blocks and doctests are all supported.
+#
+# This is currently disabled by default, but it is planned for this
+# to be opt-out in the future.
+docstring-code-format = false
+
+# Set the line length limit used when formatting code snippets in
+# docstrings.
+#
+# This only has an effect when the `docstring-code-format` setting is
+# enabled.
+docstring-code-line-length = "dynamic"

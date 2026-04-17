@@ -9,12 +9,24 @@ Classes:
 __all__ = ["Task", "ThirdPartyTask"]
 __author__ = "Gabriel Dorlhiac"
 
-import time
-from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, TextIO, Type, Union, TYPE_CHECKING
 import os
-import warnings
 import signal
+import socket
+import sys
+import time
+import warnings
+from abc import ABC, abstractmethod
+from typing import (
+    Any,
+    Dict,
+    List,
+    Optional,
+    Set,
+    TextIO,
+    Type,
+    Union,
+    TYPE_CHECKING,
+)
 
 import lute.execution.subprocess_utils
 
@@ -35,10 +47,13 @@ else:
         AnalysisHeader,
     )
 from lute.execution.ipc import (
+    Communicator,
     Message,
     PipeCommunicator,
     SocketCommunicator,
-    Communicator,
+    TaskRequest,
+    TaskRequestMessage,
+    TaskMetadataMessage,
 )
 from lute.execution.debug_utils import LUTE_DEBUG_EXIT
 from lute.io.parameters import RowIds
@@ -137,6 +152,19 @@ class Task(ABC):
         self._use_mpi: bool = use_mpi
         self._row_ids: Optional[RowIds] = row_ids
 
+        affinity: Set[int] = os.sched_getaffinity(0)
+        # By convention, the Executor takes the minimum core on this node.
+        # Task gets everything else. If we only have 1 core here then out of luck
+        # and cannot set new affinities without issues
+        if len(affinity) > 1:
+            executor_affinity: Set[int] = {min(affinity)}
+            task_affinity: Set[int] = affinity - executor_affinity
+            os.sched_setaffinity(0, task_affinity)
+
+        # We can use `stdin` to receive Message's back from the Executor
+        # Set non-blocking otherwise reads would hang
+        os.set_blocking(sys.stdin.fileno(), False)
+
     def run(self) -> None:
         """Calls the analysis routines and any pre/post task functions.
 
@@ -200,6 +228,13 @@ class Task(ABC):
             comm.Barrier()
             if rank == 0:
                 self._report_to_executor(start_msg)
+
+                # In first-party, different environment Tasks the bootstrap process
+                # will create a file to share RowIds. The path is stored in an env var
+                # and it can now be deleted safely since we're past the Barrier above
+                bootstrap_file: Optional[str] = os.getenv("LUTE_BOOTSTRAP_FILE")
+                if bootstrap_file is not None and os.path.exists(bootstrap_file):
+                    os.remove(bootstrap_file)
         else:
             self._report_to_executor(start_msg)
 
@@ -215,6 +250,21 @@ class Task(ABC):
                 comm.Barrier()
             else:
                 os.kill(os.getpid(), signal.SIGSTOP)
+
+        # Upon resuming, we will also send some metadata that can be logged
+        # for inter-Task communication later
+        hostnames: List[str] = []
+        metadata: Dict[str, List[str]] = {}
+        hostname: str
+        if self._use_mpi:
+            comm = MPI.COMM_WORLD
+            hostname = MPI.Get_processor_name()
+            hostnames = comm.allgather(hostname)
+        else:
+            hostname = socket.gethostname()
+            hostnames.append(hostname)
+        metadata["task_hostnames"] = hostnames
+        self.publish_metadata(metadata=metadata)
 
     def _signal_result(self) -> None:
         """Send the signal that results are ready along with the results."""
@@ -250,6 +300,78 @@ class Task(ABC):
         communicator.delayed_setup()
         communicator.write(msg)
         communicator.clear_communicator()
+
+    def task_request(
+        self, for_task: str, request: Any, wait_for_resp: bool = True
+    ) -> None:
+        """Send a message with a request for another Task.
+
+        The other `Task` may or may not be running. The request is sent to the
+        Executor that is managing this Task. A response can be waited for, or
+        it can be checked for later.
+
+        Args:
+            for_task (str): The name of the `Task` the request should be routed to.
+                This is the `Task` (NOT **managed** Task) name. It can be running in
+                any environment etc. The details of how the request is routed are
+                not relevant to the Task layer.
+
+            request (Any): The request to be sent. It must be JSON serializable.
+
+            wait_for_resp (bool): Whether to block on the response. If False, the
+                Task can check at a later time using the `check_request_response`
+                method.
+
+        Returns:
+            resp
+        """
+        req: TaskRequest = TaskRequest(
+            request=request, for_task=for_task, for_manager=False
+        )
+        req_msg: TaskRequestMessage = TaskRequestMessage(contents=req)
+        self._report_to_executor(msg=req_msg)
+        if wait_for_resp:
+            communicator: PipeCommunicator = PipeCommunicator()
+            # Ignoring for now...
+            # resp_msg: Message = communicator.read()
+            communicator.read()
+
+    def get_running_tasks(self) -> Message:
+        """Send a message with a request to know any other running Tasks.
+
+        Args:
+            for_task (str): The name of the `Task` the request should be routed to.
+                This is the `Task` (NOT **managed** Task) name. It can be running in
+                any environment etc. The details of how the request is routed are
+                not relevant to the Task layer.
+
+            request (Any): The request to be sent. It must be JSON serializable.
+
+            wait_for_resp (bool): Whether to block on the response. If False, the
+                Task can check at a later time using the `check_request_response`
+                method.
+
+        Returns:
+            resp (Message): Response from the workflow manager (if any).
+        """
+        req: TaskRequest = TaskRequest(
+            request="RUNNING_TASKS", for_task=None, for_manager=True
+        )
+        req_msg: TaskRequestMessage = TaskRequestMessage(contents=req)
+        self._report_to_executor(msg=req_msg)
+
+        communicator: PipeCommunicator = PipeCommunicator()
+        return communicator.read(wait=2)
+
+    def publish_metadata(self, metadata: Dict[str, Any]) -> None:
+        """Send a message containing metadata that can be accessed by other Tasks.
+
+        Args:
+            metadata (Dict[str, Any]): A dictionary of key/value pairs that contains
+                data that other Tasks running in parallel could find useful.
+        """
+        meta_msg: TaskMetadataMessage = TaskMetadataMessage(contents=metadata)
+        self._report_to_executor(msg=meta_msg)
 
     def clean_up_timeout(self) -> None:
         """Perform any necessary cleanup actions before exit if timing out."""
@@ -335,7 +457,11 @@ class ThirdPartyTask(Task):
             )
             template_dir = "../../config/templates"
         else:
-            template_dir = f"{lute_path}/config/templates"
+            py_ver: str = f"python{sys.version_info.major}.{sys.version_info.minor}"
+            template_dir = f"{lute_path}/lib/{py_ver}/site-packages/config/templates"
+            if not os.path.exists(template_dir):
+                # Did not install and running from clone of repo
+                template_dir = f"{lute_path}/config/templates"
         environment: Environment = Environment(loader=FileSystemLoader(template_dir))
         template: Template = environment.get_template(template_name)
 
@@ -457,8 +583,11 @@ class ThirdPartyTask(Task):
             msg: Message = Message(contents=self._formatted_command())
             self._report_to_executor(msg)
         LUTE_DEBUG_EXIT("LUTE_DEBUG_BEFORE_TPP_EXEC")
-        self._setup_env()
-        os.execvp(file=self._cmd, args=self._args_list)
+        task_env: Dict[str, str] = self._setup_env()
+        task_env.update(self._non_slurm_mpi_mods(task_env=task_env))
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os.execvpe(file=self._cmd, args=self._args_list, env=task_env)
 
     def _formatted_command(self) -> str:
         """Returns the command as it would passed on the command-line."""
@@ -473,11 +602,68 @@ class ThirdPartyTask(Task):
         msg: Message = Message(signal=signal)
         self._report_to_executor(msg)
 
-    def _setup_env(self) -> None:
+    def _non_slurm_mpi_mods(self, task_env: Dict[str, str]) -> Dict[str, str]:
+        """Configure MPI to use a hostfile for resource determination.
+
+        In the event the ThirdPartyTask is calling `mpirun` or similar, the automated
+        resource determination can fail inside the SLURM job depending on the
+        environment and/or MPI version. By using a hostfile, the resources can
+        always be determined. The execution layer sets this up before hand
+        and defines the `LUTE_MPI_HOSTFILE_PATH` environment variable.
+
+        Args:
+            task_env (Dict[str, str]): The new Task environment. It should already
+                be processed (e.g. LUTE_TENV_ removal). It will be checked for the
+                `LUTE_MPI_HOSTFILE_PATH` environment variable.
+
+        Returns:
+            mpi_updates (Dict[str, str]): A set of new environment variables which
+                should be added to the Task environment dictionary for MPI
+                configuration.
+        """
+        hostfile_path: Optional[str] = task_env.get("LUTE_MPI_HOSTFILE_PATH")
+        if hostfile_path is None:
+            return {}
+
+        # You may find some info here: https://docs.open-mpi.org/en/v5.0.7/mca.html
+        # BUT - things change between versions. Tread carefully...
+        mca_config: Dict[str, str] = {
+            "PRTE_MCA_ras_slurm_priority": "0",
+            "PRTE_MCA_plm": "slurm",
+            "PRTE_MCA_plm_slurm_args": "--overlap --export=ALL",
+            "PRTE_MCA_prte_default_hostfile": hostfile_path,
+            "OMPI_MCA_orte_default_hostfile": hostfile_path,
+            "MPIEXEC_HOSTFILE": hostfile_path,  # Not sure if this exists/is needed?
+            # Can turn this on for debugging - display MPI's discovered resources
+            # "PRTE_MCA_rmaps_base_display_allocation": "1",
+            # Can turn this on for debugging - report how ranks are bound
+            # "OMPI_MCA_hwloc_base_report_bindings": "1",
+            "PRTE_MCA_plm_rsh_pass_path": "1",
+        }
+
+        return mca_config
+
+    def _setup_env(self) -> Dict[str, str]:
         new_env: Dict[str, str] = {}
+        mpi_hostfile: str = ""
+        found_tenv: bool = False
         for key, value in os.environ.items():
             if "LUTE_TENV_" in key:
                 # Set if using a custom environment
+                found_tenv = True
                 new_key: str = key[10:]
                 new_env[new_key] = value
-        os.environ.update(new_env)
+            # SLURM vars and the hostfile are needed for MPI
+            elif "SLURM_" in key:
+                new_env[key] = value
+            elif key == "LUTE_MPI_HOSTFILE_PATH":
+                mpi_hostfile = value
+        if not found_tenv:
+            # No shell script sourced - will use the base environment
+            # The SLURM_ keys will be in this copy.
+            new_env = os.environ.copy()
+
+        if mpi_hostfile:
+            new_env["LUTE_MPI_HOSTFILE_PATH"] = mpi_hostfile
+
+        return new_env

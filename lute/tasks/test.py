@@ -12,11 +12,11 @@ Classes:
         database access.
 """
 
-__all__ = ["Test", "TestSocket", "TestWriteOutput", "TestReadOutput"]
+__all__ = ["Test", "TestSocket", "TestWriteOutput", "TestReadOutput", "TestRequest"]
 __author__ = "Gabriel Dorlhiac"
 
 import time
-from typing import cast
+from typing import List, cast
 
 import numpy as np
 
@@ -121,5 +121,57 @@ class TestReadOutput(Task):
     def _post_run(self) -> None:
         super()._post_run()
         self._result.summary = "Was able to load data."
+        self._result.payload = "This Task produces no output."
+        self._result.task_status = TaskStatus.COMPLETED
+
+
+class TestRequest(Task):
+    """Simple test Task to try to send requests to and from via workflow manager."""
+
+    def __init__(self, *, params: TestReadOutputParameters) -> None:
+        super().__init__(params=params)
+
+    def _parse_response(self, resp: Message) -> None:
+        running_managed_tasks: List[str] = []
+        running_tasks: List[str] = []
+        if isinstance(resp.contents, dict):
+            for managed_task_dict in resp.contents["managed_tasks"]:
+                running_managed_tasks.append(managed_task_dict["name"])
+                running_tasks.append(managed_task_dict["task"])
+
+        n_tasks: int = len(running_managed_tasks)
+        msg_str: str = f"TestRequest acknowledges that {n_tasks} Tasks are running\n"
+        msg_str += "Their names are: " + ",".join(running_managed_tasks)
+
+        self._report_to_executor(msg=Message(contents=msg_str))
+
+    def _run(self) -> None:
+        self._report_to_executor(Message(contents="Got to run"))
+        time.sleep(1)
+
+        # Format should be:
+        # {
+        #     "managed_tasks": [
+        #         { "name": "...", "status": "...", "task": "...", OTHER KEYS MAYBE },
+        #         { "name": "...", "status": "...", "task": "...", OTHER KEYS MAYBE },
+        #     ]
+        # }
+        resp: Message = self.get_running_tasks()
+        self._parse_response(resp=resp)
+        time.sleep(1)
+
+        resp = self.get_running_tasks()
+        self._parse_response(resp=resp)
+        time.sleep(1)
+
+        resp = self.get_running_tasks()
+        self._parse_response(resp=resp)
+        time.sleep(1)
+
+        self._report_to_executor(Message(contents="And done..."))
+
+    def _post_run(self) -> None:
+        super()._post_run()
+        self._result.summary = "Was able to request via workflow manager.."
         self._result.payload = "This Task produces no output."
         self._result.task_status = TaskStatus.COMPLETED

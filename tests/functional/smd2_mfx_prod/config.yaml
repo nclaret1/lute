@@ -1,0 +1,101 @@
+%YAML 1.3
+---
+title: "LUTE Task Configuration" # Include experiment description if desired
+experiment: "mfx101344525"
+run: 90
+date: "2023/10/25"
+lute_version: 0.1      # Do not be change unless need to force older version
+task_timeout: 30000
+work_dir: "/tmp"
+...
+---
+###########
+# Smalldata
+###########
+# Producer will be auto-determined. Set only if you have a separate install
+# Set `directory` if you want to write to a different folder
+# For out of memory issues try setting gather_interval
+SubmitSMD:
+  # Command line arguments
+  producer: "{{ work_dir }}/smalldata_tools/lcls2_producers/smd_producer.py"
+  #run: 99
+  #experiment: ""
+  #stn: 0
+  directory: "{{ work_dir }}"
+  nevents: 5000
+  #config: "mfx_cctbx"
+  #gather_interval: 25
+  #norecorder: False
+  #url: "https://pswww.slac.stanford.edu"
+  #epicsAll: False
+  #full: False
+  #fullSum: False
+  #default: true
+  #image: False
+  #tiff: False
+  #centerpix: False
+  #postRuntable: False
+  #wait: False
+  #xtcav: False
+  #noarch: False
+  # **************************************************************************/
+  # * Below this point you will be configuring the prod_config_mfx file ******/
+  # * This will overwrite any manual changes you make to that file      ******/
+  # * Comment all the rest of these parameters out to manually edit     ******/
+  # **************************************************************************/
+  # Producer variables. These are substituted into the producer to run specific
+  # data reduction algorithms. Uncomment and modify as needed.
+  # If you prefer to modify the producer file directly, leave commented.
+  # Beginning with `getROIs`, you will need to modify the first entry to be a
+  # detector. This detector MUST MATCH one of the detectors in `detnames`.
+  # In the future this will be automated. If you have multiple detectors you can
+  # add them with their own set of parameters.
+  detnames: ["jungfrau","epix100_0", "qadc"]
+  #epicsPV: []
+  epicsArchFilePV:
+    - ["SP1L0:DCCM:MMS:TH1.RBV", 'dccm_th1']
+    - ["SP1L0:DCCM:MMS:TH2.RBV", 'dccm_th2']
+    - ["SP1L0:DCCM:MMS:TH1", 'dccm_th1_setpoint']
+    - ["SP1L0:DCCM:MMS:TH2", 'dccm_th2_setpoint']
+    - ["SP1L0:DCCM:energy:OphydReadback",'dccm_E']
+    - ["SP1L0:DCCM:energy:OphydSetpoint",'dccm_E_setpoint']
+    - ["MFX:LAS:MMN:11.RBV",'lens_h']
+    - ["MFX:LAS:MMN:12.RBV",'lens_v']
+  #ttCalib: []
+  # Provide detector image sum algorithms.
+  # If detSumAlgos is not defined, it will default to calib, calib_dropped and
+  # calib_dropped_square for every detector. You can add processing algorithms for
+  # single detectors (e.g. epix10k2M or Rayonix) as below, or add algorithms which
+  # will apply to every detector defined in detnames by placing them under "all"
+  detSumAlgos:
+    epix100_0:
+      - "calib"
+      - "calib_max"
+    jungfrau:
+      - "calib"
+      - "calib_max"
+  getROIs:
+    epix100_0:   # Change to detector name
+      - ROI: [[530, 680], [270, 350]]
+        writeArea: True   # Whether to save ROI, if False, save sum but not img.
+        thresADU: 3.5
+        calcPars: True    # Save ROI sum, mean, max along with ROI
+  getAzIntParams:
+    jungfrau:
+      eBeam: 7.1
+      center: [0, 0]
+      dis_to_sam: 150
+      phiBins: 11
+      qbin: 0.02
+      tx: 0
+      ty: 0
+      #userMask: "/path/to/mask.npy"
+  getDropletParams:
+    epix100_0:
+      threshold: 3.4375
+  #    thresholdLow: 5
+      thresADU: 3.5
+      useRms: False
+  #    nData: 1e5
+      name: 'droplet'
+...

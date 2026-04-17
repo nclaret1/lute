@@ -4,6 +4,8 @@ Executor-managed Tasks with specific environment specifications are defined
 here.
 """
 
+import os
+
 from lute.execution.executor import Executor, MPIExecutor
 from lute.tasks.util.environment import setup_smd2_env
 from lute.tasks.tasklets import (
@@ -36,13 +38,16 @@ ReadTester: Executor = Executor("TestReadOutput")
 MultiNodeCommunicationTester: MPIExecutor = MPIExecutor("TestMultiNodeCommunication")
 """Runs a test to confirm communication works between multiple nodes."""
 
+RequestTester: Executor = Executor("TestRequest")
+"""Runs a test whether requests go from Task to Executor to Workflow manager."""
+
 # SmallData-related
 ###################
 SmallDataProducer: Executor = Executor("SubmitSMD")
 """Runs the production of a LCLS1 smalldata HDF5 file."""
 SmallDataProducer.add_tasklet(
     clone_smalldata,
-    ["{{ producer }}"],
+    ["{{ producer }}", f"{os.getenv('LUTE_PATH')}/config/templates/smd.patch"],
     when="before",
     set_result=False,
     set_summary=False,
@@ -55,12 +60,54 @@ SmallDataProducer2.shell_source(
 )
 SmallDataProducer2.add_tasklet(
     clone_smalldata,
-    ["{{ producer }}"],
+    ["{{ producer }}", f"{os.getenv('LUTE_PATH')}/config/templates/smd.patch"],
     when="before",
     set_result=False,
     set_summary=False,
 )
 SmallDataProducer2.update_environment(setup_smd2_env)
+
+SmallDataProducer2Test: Executor = Executor("SubmitSMD")
+"""Runs the production of a LCLS2 smalldata HDF5 file using the test environment."""
+SmallDataProducer2Test.shell_source(
+    "/sdf/group/lcls/ds/ana/sw/conda2/manage/bin/pscondatest.sh"
+)
+SmallDataProducer2Test.add_tasklet(
+    clone_smalldata,
+    ["{{ producer }}", f"{os.getenv('LUTE_PATH')}/config/templates/smd.patch"],
+    when="before",
+    set_result=False,
+    set_summary=False,
+)
+SmallDataProducer2Test.update_environment(setup_smd2_env)
+
+SmallDataProducerSpack: Executor = Executor("SubmitSMD")
+"""Runs the production of a LCLS2 smalldata HDF5 file using the spack environment."""
+SmallDataProducerSpack.shell_source(
+    "/sdf/scratch/users/d/dorlhiac/work/lcls2_spack_new/setup_env_spack.sh"
+)
+SmallDataProducerSpack.add_tasklet(
+    clone_smalldata,
+    ["{{ producer }}"],
+    when="before",
+    set_result=False,
+    set_summary=False,
+)
+SmallDataProducerSpack.update_environment(setup_smd2_env)
+
+SmallDataProducerXpp: Executor = Executor("SubmitSMD")
+"""Runs the production of a LCLS2 smalldata HDF5 file using the spack environment."""
+SmallDataProducerXpp.shell_source(
+    "/sdf/group/lcls/ds/ana/sw/conda2/manage/bin/xpp_drp_gpu.sh"
+)
+SmallDataProducerXpp.add_tasklet(
+    clone_smalldata,
+    ["{{ producer }}"],
+    when="before",
+    set_result=False,
+    set_summary=False,
+)
+SmallDataProducerXpp.update_environment(setup_smd2_env)
 
 SmallDataXSSAnalyzer: MPIExecutor = MPIExecutor("AnalyzeSmallDataXSS")
 """Process scattering results from a Small Data HDF5 file."""
@@ -140,8 +187,20 @@ DimpleSolver.add_tasklet(
     set_summary=True,
 )
 
-PeakFinderPyAlgos: MPIExecutor = MPIExecutor("FindPeaksPyAlgos")
-"""Performs Bragg peak finding using the PyAlgos algorithm."""
+PeakFinderSFX: MPIExecutor = MPIExecutor("FindPeaksSFX")
+"""Performs Bragg peak finding using the PyAlgos or Peakfinder8 algorithm."""
+
+PeakFinderSFXXpp: MPIExecutor = MPIExecutor("FindPeaksSFX")
+"""Performs Bragg peak finding using the PyAlgos or Peakfinder8 algorithm."""
+PeakFinderSFXXpp.shell_source(
+    "/sdf/group/lcls/ds/ana/sw/conda2/manage/bin/xpp_drp_cpu.sh"
+)
+
+PeakFinderSFXXppGpu: MPIExecutor = MPIExecutor("FindPeaksSFX")
+"""Performs Bragg peak finding using the PyAlgos or Peakfinder8 algorithm."""
+PeakFinderSFXXppGpu.shell_source(
+    "/sdf/group/lcls/ds/ana/sw/conda2/manage/bin/xpp_drp_gpu.sh"
+)
 
 DrPeakFinderPyAlgos: MPIExecutor = MPIExecutor("DrFindPeaksPyAlgos")
 """Perform Dr and compare Bragg peak finding using the PyAlgos algorithm."""
@@ -155,13 +214,35 @@ PeakFinderPsocake: Executor = Executor("FindPeaksPsocake")
 
 # XTC
 #####
-
 Xtc1to2Converter: Executor = Executor("ConvertXtc1to2")
 """Converts Xtc1 files to Xtc2 to use in psana2"""
 
 # Cheetah
 #########
-
 CheetahRunner: Executor = Executor("RunCheetah")
 """Run Cheetah task."""
 CheetahRunner.shell_source("/sdf/group/lcls/ds/tools/om/setup-om.sh")
+
+# BayFAI
+#######
+BayFAIOptimizer: MPIExecutor = MPIExecutor("BayFAI")
+"""Optimize LCLS detector geometry using BayFAI: PyFAI coupled with Bayesian Optimization."""
+BayFAIOptimizer.update_environment(
+    {
+        "NUMEXPR_MAX_THREADS": "16",
+        "NUMEXPR_NUM_THREADS": "16",
+        "PYTHONPATH": "/sdf/group/lcls/ds/tools/LCLSGeom",
+    }
+)
+
+BayFAIOptimizer2: MPIExecutor = MPIExecutor("BayFAI")
+"""Optimize LCLS2 detector geometry using BayFAI: PyFAI coupled with Bayesian Optimization."""
+BayFAIOptimizer2.update_environment(
+    {
+        "NUMEXPR_MAX_THREADS": "16",
+        "NUMEXPR_NUM_THREADS": "16",
+        "PS_SRV_NODES": "0",
+        "PS_EB_NODES": "1",
+        "PYTHONPATH": "/sdf/group/lcls/ds/tools/LCLSGeom",
+    }
+)

@@ -1,7 +1,9 @@
 # LUTE
 [![Docs](https://img.shields.io/badge/Docs-GH_Pages-blue)](https://slac-lcls.github.io/lute/dev)
+[![Release build](https://github.com/slac-lcls/lute/actions/workflows/build.yml/badge.svg)](https://github.com/slac-lcls/lute/actions/workflows/release.yml)
+
 ## Description
-`lute`, or `LUTE`, is the LCLS Unified Task Executor - an automated workflow package for running analysis pipelines at SLAC's LCLS. This project is the next iteration of [btx](https://github.com/lcls-users/btx), and is still in very early stages of development. `btx` is still maintained and should be used until further notice.
+`lute`, or `LUTE`, is the LCLS Unified Task Executor - an automated workflow package for running analysis pipelines at SLAC's LCLS. This project is the next iteration of [btx](https://github.com/lcls-users/btx).
 
 This package is used to run arbitrary analysis code (first-party or third-party) in the form of individual analysis `Task`s. `Task`s can be linked together to form complete end-to-end analysis pipelines or workflows. For workflow management, the package interfaces with Airflow running on S3DF.
 
@@ -133,4 +135,4 @@ Debug logging code (i.e. `logger.debug("my message")`) need not be placed inside
 This project's license is available in `LICENSE.md`.
 
 ## Project status
-Early active development - pre-alpha.
+Early active development - the public API is still subject to change, but some degree of stability can be expected at this point. The codebase is in active usage in production.

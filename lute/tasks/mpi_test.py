@@ -69,10 +69,6 @@ class TestMultiNodeCommunication(Task):
             ax.set_title("Multi-Node Communication Test")
             msg = Message(contents=fig)
             self._report_to_executor(msg)
-        else:
-            # This shouldn't happen -> Pydantic should fail first
-            self._result.summary = "Failed."
-            self._result.task_status = TaskStatus.FAILED
 
     def _post_run(self) -> None:
         if self._result.task_status != TaskStatus.FAILED:

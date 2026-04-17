@@ -23,7 +23,7 @@ else:
 logger: logging.Logger = get_logger(__name__, is_task=False)
 
 LUTE_DB_CURRENT_SPEC_VERSION: int = 0x000002
-LUTE_DB_DEFAULT_SPEC_VERSION: int = 0x000001
+LUTE_DB_DEFAULT_SPEC_VERSION: int = 0x000002
 
 LUTE_DB_SPEC_VERSION: int = int(
     os.getenv("LUTE_DB_SPEC_VERSION", LUTE_DB_DEFAULT_SPEC_VERSION)

@@ -32,3 +32,8 @@ nosetests.xml
 coverage.xml
 
 indexamajig.*/
+
+# Notebooks
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+

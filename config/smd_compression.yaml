@@ -1,0 +1,91 @@
+%YAML 1.3
+---
+title: "Config to run smalldata_tools on converted XTC1 files."
+experiment: "mfx100903824"
+run: "27"
+date: "2025/09/29"
+lute_version: 0.2.0      # Do not be change unless need to force older version
+task_timeout: 6000
+work_dir: "/sdf/scratch/users/d/dorlhiac"
+...
+---
+# We will define some convenience keys for substitution in other parameters
+EXPERIMENT_DIR: "/sdf/data/lcls/ds/mfx/{{ experiment }}"
+FAKE_PSDM_SUBDIR: "mfx/{{ experiment }}/xtc"
+XTC2_FILE_PATH: "{{ EXPERIMENT_DIR }}/scratch/dorlhiac/{{ FAKE_PSDM_SUBDIR }}"
+XTC2_FILE_NAME: "{{ experiment }}-r{{ run:04d }}-s000-c000.xtc2"
+DET_CALIB_DIR: "calib/Epix10ka2M::CalibV1/MfxEndstation.0:Epix10ka2M.0"
+
+ConvertXtc1to2:               # All variables are given as strings
+  node_id: "1"                # Node ID for the detector
+  eventfile: ""
+  nevents: 120
+  output_file: "{{ XTC2_FILE_PATH }}/{{ XTC2_FILE_NAME }}"
+  xtc1_access_pattern:
+    epix10k2M: # Name of the detector in the converted XTC2
+    # You can have a list of attributes you will convert that will be stored in
+    # this detector
+      - xtc2_attr_name: "calib"        # Name of this attribute in xtc2
+        object_name: "epix10k2M"       # Name of the detector in psana1
+        object_type: "psana.Detector"  # Name of the object type in psana1
+        object_field_name: "calib"     # Name of the per-event method to use in psana1
+    EBeam:
+      - xtc2_attr_name: "photon_energy"
+        object_name: "EBeam"
+        object_type: "psana.Detector"
+        object_field_name: ["get","ebeamPhotonEnergy"]
+
+SubmitSMD:
+  # Command line arguments
+  #map_by: "core"   # MPI resource mapping - take care with changing unless familiar
+  #bind_to: "core"  # MPI resource binding - take care with changing unless familiar
+  np: 5
+  producer: "/sdf/scratch/users/d/dorlhiac/work/smalldata_tools_new/lcls2_producers/smd_producer.py"
+  run: "{{ run }}"
+  experiment: "{{ experiment }}"
+  #stn: 0
+  directory: "/sdf/scratch/users/d/dorlhiac/"
+  psdm_dir: "{{ XTC2_FILE_PATH }}"
+  #config: "mfx_cctbx"
+  #gather_interval: 25
+  #norecorder: False
+  #url: "https://pswww.slac.stanford.edu"
+  #epicsAll: False
+  #full: False
+  #fullSum: False
+  #default: true
+  #image: False
+  #tiff: False
+  #centerpix: False
+  #postRuntable: False
+  #wait: False
+  #xtcav: False
+  #noarch: False
+  # Producer variables. These are substituted into the producer to run specific
+  # data reduction algorithms. Uncomment and modify as needed.
+  # If you prefer to modify the producer file directly, leave commented.
+  # Beginning with `getROIs`, you will need to modify the first entry to be a
+  # detector. This detector MUST MATCH one of the detectors in `detnames`.
+  # In the future this will be automated. If you have multiple detectors you can
+  # add them with their own set of parameters.
+
+  detnames: ["epix10k2M"]
+  # Detector sum images - per detector
+  detSumAlgos:
+    epix10k2M:
+      - "calib"
+      - "calib_max"
+  # Setup the ROIs
+  getROIs:
+    epix10k2M:   # Change to detector name
+      - ROI: [[[1, 2], [157, 487], [294, 598]]]
+        writeArea: True   # Whether to save ROI, if False, save sum but not img.
+        thresADU: None
+  # Compression arguments. Comment this entire block if no compression wanted
+  getPressioCompression:
+    epix10k2M:
+      compressor_id: "sz3"
+      # Specific arguments vary depending on compressor_id
+      compressor_args:
+        abs_error_bound: 10
+

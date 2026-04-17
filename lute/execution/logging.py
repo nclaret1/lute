@@ -94,6 +94,10 @@ def get_logger(name: str, is_task: bool = True) -> logging.Logger:
             other_logger, logging.PlaceHolder
         ):
             other_logger.disabled = True
+        elif "pyFAI" in other_name and not isinstance(
+            other_logger, logging.PlaceHolder
+        ):
+            other_logger.disabled = True
         elif "numpy" in other_name and not isinstance(
             other_logger, logging.PlaceHolder
         ):

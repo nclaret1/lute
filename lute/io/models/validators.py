@@ -6,7 +6,7 @@ Functions:
 """
 
 __all__ = ["template_parameter_validator", "validate_smd_path"]
-__author__ = "Gabriel Dorlhiac"
+__author__ = ["Gabriel Dorlhiac"]
 
 import os
 from typing import Dict, Any, Optional

@@ -1,0 +1,4 @@
+option('install_tests', type: 'boolean', value: true, 
+       description: 'Install C++ test executables into the environment')
+option('install_utilities', type: 'boolean', value: true, 
+       description: 'Install utility scripts like activate_installation')

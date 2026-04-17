@@ -23,6 +23,8 @@ import logging
 import os
 from typing import List, Dict, Any, Tuple, Optional, Union
 
+from pydantic import BaseModel
+
 from lute.io._db.common_sqlite import DatabaseError
 from lute.execution.logging import get_logger
 from lute.io.models.base import TaskParameters, TemplateParameters
@@ -237,6 +239,8 @@ def _dict_to_flatdicts(
         corrected_value: Any = value
         if isinstance(corrected_value, TemplateParameters):
             corrected_value = value.params
+        if isinstance(corrected_value, BaseModel):
+            corrected_value = corrected_value.dict()
         x: Union[Dict[str, Any], List[Tuple[str, Any]]]
         y: Union[Dict[str, str], List[Tuple[str, str]]]
         if isinstance(corrected_value, dict):

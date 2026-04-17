@@ -24,6 +24,7 @@ __all__ = [
     "TestSocketParameters",
     "TestWriteOutputParameters",
     "TestReadOutputParameters",
+    "TestRequestParameters",
 ]
 __author__ = "Gabriel Dorlhiac"
 
@@ -107,3 +108,7 @@ class TestReadOutputParameters(TaskParameters):
             if filename is not None:
                 return f"{values['lute_config'].work_dir}/{filename}"
         return in_file
+
+
+class TestRequestParameters(TaskParameters):
+    placeholder: str = Field("Test", description="This is just a placeholder.")

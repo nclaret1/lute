@@ -1,3 +1,0 @@
-task_name: SmallDataProducer
-slurm_params: "--partition=milano --account=lcls:data --ntasks=120"
-next: []

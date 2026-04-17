@@ -13,6 +13,6 @@ jobs:
       - name: "Install python dependencies"
         run: "pip install numpy pydantic==1.10 zmq jinja2 panel requests mpi4py textual"
       - name: "Run mypy install-types"
-        run: "yes | mypy ./lute ./utilities/src ./launch_scripts ./workflows/airflow --install-types || true"
+        run: "yes | mypy ./lute ./utilities ./launch_scripts ./workflows/airflow --install-types || true"
       - name: "Run mypy"
-        run: "mypy ./lute ./utilities/src ./launch_scripts"
+        run: "mypy ./lute ./utilities ./launch_scripts"

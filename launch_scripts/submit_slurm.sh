@@ -16,6 +16,14 @@ $(basename "$0"):
         --psana2
           Use Psana2 for the base environment. The core infrastructure runs in
           Both psana1 and psana2.
+        --psana1
+          Use Psana1 for the base environment. The core infrastructure runs in
+          Both psana1 and psana2. This argument takes precedence over --psana2.
+          This is because we now default to psana2 if we cannot determine what
+          kind of DAQ was used for a run (like with xpptut15) experiments. By
+          allowing this one to take precedence, the psana1 environment can be
+          forced without adding additional complexity to the auto-environment
+          determination that takes place.
 
     NOTE: This script does not parse SLURM arguments, but a number of them are
           mandatory. All additional arguments are transparently passed to SLURM.
@@ -79,6 +87,10 @@ do
         USE_PSANA2=1
         shift
         ;;
+    --psana1)
+        USE_PSANA1=1
+        shift
+        ;;
     *)
         POS+=("$1")
         shift
@@ -127,7 +139,11 @@ else
     export LUTE_SOCKET="/tmp/lute_${RANDOM}.sock"
 fi
 
-if [[ ${USE_PSANA2} ]]; then
+# By default source the psana environment since most Tasks will use it.
+if [[ ${USE_PSANA1} ]]; then
+    echo "Using a Psana1 base environment."
+    source /sdf/group/lcls/ds/ana/sw/conda1/manage/bin/psconda.sh
+elif [[ ${USE_PSANA2} ]]; then
     echo "Using a Psana2 base environment."
     source /sdf/group/lcls/ds/ana/sw/conda2/manage/bin/psconda.sh
 else
@@ -135,8 +151,19 @@ else
     source /sdf/group/lcls/ds/ana/sw/conda1/manage/bin/psconda.sh
 fi
 
-export LUTE_PATH="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd | sed s/launch_scripts//g )"
-EXECUTABLE="${LUTE_PATH}run_task.py"
+SCRIPT_DIR="$( readlink -f "$( dirname "${BASH_SOURCE[0]}" )" )"
+export LUTE_PATH="$( echo $SCRIPT_DIR | sed s/launch_scripts//g | sed s/bin//g )"
+EXECUTABLE="run_task.py"
+
+if [[ $SCRIPT_DIR == *"launch_scripts"* ]]; then
+    EXECUTABLE="${LUTE_PATH}run_task.py"
+else
+    # Running from installation
+    source "${SCRIPT_DIR}/activate_installation"
+    EXECUTABLE="$(which run_task)"
+    export LUTE_PATH="${LUTE_PATH}/lib/python3.9/site-packages"
+fi
+
 
 if [[ ${DEBUG} ]]; then
     echo "Running in debug mode - verbose logging."

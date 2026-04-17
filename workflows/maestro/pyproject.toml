@@ -1,0 +1,10 @@
+[build-system]
+requires = ["meson-python", "pybind11"]
+build-backend = "mesonpy"
+
+[project]
+name = "maestro"
+version = "0.2.0"
+
+[tool.meson-python.args]
+install = ['--skip-subprojects', 'spdlog']
