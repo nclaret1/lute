@@ -357,7 +357,9 @@ class StreamFindPeaksPyAlgos(Task):
                 if par.compression is not None and libpressio_config is not None:
                     from libpressio import PressioCompressor  # type: ignore
 
-                    cfg = add_peaks_to_libpressio_configuration(libpressio_config, peaks)
+                    cfg = add_peaks_to_libpressio_configuration(
+                        libpressio_config, peaks
+                    )
                     comp = PressioCompressor.from_config(cfg)
                     dec = np.zeros_like(img)
                     comp.decode(comp.encode(img), dec)
@@ -420,7 +422,9 @@ class StreamFindPeaksPyAlgos(Task):
             powder_misses=powder_misses,
             mask=mask,
         )
-        file_writer.optimize_and_close_file(num_hits=num_hits, max_peaks=par.max_peaks, algo="PyAlgos")
+        file_writer.optimize_and_close_file(
+            num_hits=num_hits, max_peaks=par.max_peaks, algo="PyAlgos"
+        )
 
         master_fname: Path = write_master_file(
             mpi_size=1,
@@ -441,9 +445,7 @@ class StreamFindPeaksPyAlgos(Task):
             if num_events:
                 print(f"Fractional hit rate: {num_hits / num_events:.4f}", file=fh)
 
-        logger.info(
-            f"Done — {num_hits}/{num_events} hits. Master CXI: {master_fname}"
-        )
+        logger.info(f"Done — {num_hits}/{num_events} hits. Master CXI: {master_fname}")
 
     def _post_run(self) -> None:
         super()._post_run()

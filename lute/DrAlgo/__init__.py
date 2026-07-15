@@ -128,9 +128,10 @@ def import_dr_algo(dr_method: str) -> Type[DrAlgo]:
 
     if dr_method == "libpressio_sz3":
         from .libpressio_sz import LibpressioSZ3Algo
+
         return LibpressioSZ3Algo
 
     if dr_method == "libpressio_qoz":
         from .libpressio_qoz import LibpressioQoZAlgo
-        return LibpressioQoZAlgo
 
+        return LibpressioQoZAlgo

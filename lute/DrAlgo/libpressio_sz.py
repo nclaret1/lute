@@ -43,7 +43,10 @@ def _pressio_worker(
     if _PS461 not in sys.path:
         sys.path.insert(0, _PS461)
     import mpi4py
-    mpi4py.rc.initialize = False  # spawned subprocess is not an MPI process; skip MPI_Init
+
+    mpi4py.rc.initialize = (
+        False  # spawned subprocess is not an MPI process; skip MPI_Init
+    )
     import mpi4py.MPI  # noqa: F401 — provides __pyx_capi__ for _pressio.so type registration
 
     from libpressio import PressioCompressor  # type: ignore
@@ -66,14 +69,19 @@ def _pressio_worker(
     X_hat = decompressed.astype(dtype)
 
     import zlib
-    comp_bytes = len(compressed) if hasattr(compressed, "__len__") else int(compressed.nbytes)
+
+    comp_bytes = (
+        len(compressed) if hasattr(compressed, "__len__") else int(compressed.nbytes)
+    )
     lossless_bytes = len(zlib.compress(Xc.astype(np.float32, order="C").tobytes(), 6))
     return {
         "X_hat_bytes": X_hat.tobytes(),
         "comp_bytes": comp_bytes,
         "orig_bytes": int(Xc.size * Xc.itemsize),
         "lossless_bytes": lossless_bytes,
-        "max_abs_err": float(np.max(np.abs(X_hat.astype(np.float64) - Xc.astype(np.float64)))),
+        "max_abs_err": float(
+            np.max(np.abs(X_hat.astype(np.float64) - Xc.astype(np.float64)))
+        ),
     }
 
 
@@ -117,13 +125,23 @@ class LibpressioSZ3Algo(XhatDrAlgo):
         Xc = _check_2d(Xc)
         m, n = Xc.shape
 
-        result = _get_pool().submit(
-            _pressio_worker,
-            Xc.tobytes(), (m, n), Xc.dtype.str,
-            self.abs_error, self.bin_size, self.roi_window_size,
-        ).result()
+        result = (
+            _get_pool()
+            .submit(
+                _pressio_worker,
+                Xc.tobytes(),
+                (m, n),
+                Xc.dtype.str,
+                self.abs_error,
+                self.bin_size,
+                self.roi_window_size,
+            )
+            .result()
+        )
 
-        X_hat = np.frombuffer(result["X_hat_bytes"], dtype=Xc.dtype).reshape(m, n).copy()
+        X_hat = (
+            np.frombuffer(result["X_hat_bytes"], dtype=Xc.dtype).reshape(m, n).copy()
+        )
         orig_bytes = result["orig_bytes"]
         comp_bytes = result["comp_bytes"]
 
@@ -133,7 +151,9 @@ class LibpressioSZ3Algo(XhatDrAlgo):
         self.compression_ratio_ = orig_bytes / comp_bytes if comp_bytes > 0 else np.inf
         self.compressed_bytes_ = comp_bytes
         self.lossless_bytes_ = lossless_bytes
-        self.sz3_vs_lossless_ = lossless_bytes / comp_bytes if comp_bytes > 0 else np.inf
+        self.sz3_vs_lossless_ = (
+            lossless_bytes / comp_bytes if comp_bytes > 0 else np.inf
+        )
         self.max_abs_err_ = result["max_abs_err"]
 
         denom = float(np.linalg.norm(Xc, ord="fro")) or 1.0
@@ -157,7 +177,9 @@ class LibpressioSZ3Algo(XhatDrAlgo):
         metrics["storage"]["lossless_bytes"] = self.lossless_bytes_
         metrics["storage"]["sz3_vs_lossless"] = self.sz3_vs_lossless_
         metrics["storage"]["original_bytes"] = (
-            int(self.X_hat_.size * self.X_hat_.itemsize) if self.X_hat_ is not None else None
+            int(self.X_hat_.size * self.X_hat_.itemsize)
+            if self.X_hat_ is not None
+            else None
         )
         metrics["quality"]["max_abs_err"] = self.max_abs_err_
         metrics["quality"]["abs_error_bound"] = self.abs_error
@@ -165,11 +187,13 @@ class LibpressioSZ3Algo(XhatDrAlgo):
 
     def get_params(self, deep: bool = True) -> Dict[str, Any]:
         p = super().get_params(deep)
-        p.update({
-            "abs_error": self.abs_error,
-            "bin_size": self.bin_size,
-            "roi_window_size": self.roi_window_size,
-        })
+        p.update(
+            {
+                "abs_error": self.abs_error,
+                "bin_size": self.bin_size,
+                "roi_window_size": self.roi_window_size,
+            }
+        )
         return p
 
     def set_params(self, **params: Any) -> "LibpressioSZ3Algo":

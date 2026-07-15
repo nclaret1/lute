@@ -19,8 +19,8 @@ import h5py
 import numpy as np
 import numpy.typing as npt
 
-
 # ── TypedDicts for peak lists ─────────────────────────────────────────────────
+
 
 class Peakfinder8PeakList(TypedDict):
     num_peaks: int
@@ -44,6 +44,7 @@ class Peakfinder8_v2PeakList(TypedDict):
 
 
 # ── CxiWriter ─────────────────────────────────────────────────────────────────
+
 
 class CxiWriter:
 
@@ -226,7 +227,9 @@ class CxiWriter:
             self._outh5["entry_1/data_1/data"].resize(self._index + 1, axis=0)
             ds_key: str
             for ds_key in self._outh5["/entry_1/result_1"].keys():
-                self._outh5[f"/entry_1/result_1/{ds_key}"].resize(self._index + 1, axis=0)
+                self._outh5[f"/entry_1/result_1/{ds_key}"].resize(
+                    self._index + 1, axis=0
+                )
             for ds_key in (
                 "machineTime",
                 "machineTimeNanoSeconds",
@@ -236,17 +239,33 @@ class CxiWriter:
             ):
                 self._outh5[f"/LCLS/{ds_key}"].resize(self._index + 1, axis=0)
 
-        self._outh5["/entry_1/data_1/data"][self._index, :, :] = img.reshape(-1, img.shape[-1])
+        self._outh5["/entry_1/data_1/data"][self._index, :, :] = img.reshape(
+            -1, img.shape[-1]
+        )
         num_peaks: int = peaks["num_peaks"]
         self._outh5["/entry_1/result_1/nPeaks"][self._index] = num_peaks
-        self._outh5["/entry_1/result_1/peakXPosRaw"][self._index, :num_peaks] = np.array(peaks["fs"], dtype=np.float32)
-        self._outh5["/entry_1/result_1/peakYPosRaw"][self._index, :num_peaks] = np.array(peaks["ss"], dtype=np.float32)
+        self._outh5["/entry_1/result_1/peakXPosRaw"][self._index, :num_peaks] = (
+            np.array(peaks["fs"], dtype=np.float32)
+        )
+        self._outh5["/entry_1/result_1/peakYPosRaw"][self._index, :num_peaks] = (
+            np.array(peaks["ss"], dtype=np.float32)
+        )
         if v2:
-            self._outh5["/entry_1/result_1/peakPanelNumRaw"][self._index, :num_peaks] = np.array(peaks["panel_number"], dtype=np.float32)
-        self._outh5["/entry_1/result_1/peakNPixels"][self._index, :num_peaks] = np.array(peaks["num_pixels"], dtype=np.float32)
-        self._outh5["/entry_1/result_1/peakTotalIntensity"][self._index, :num_peaks] = np.array(peaks["intensity"], dtype=np.float32)
-        self._outh5["/entry_1/result_1/peakMaxIntensity"][self._index, :num_peaks] = np.array(peaks["max_pixel_intensity"], dtype=np.float32)
-        self._outh5["/entry_1/result_1/peakSNR"][self._index, :num_peaks] = np.array(peaks["snr"], dtype=np.float32)
+            self._outh5["/entry_1/result_1/peakPanelNumRaw"][
+                self._index, :num_peaks
+            ] = np.array(peaks["panel_number"], dtype=np.float32)
+        self._outh5["/entry_1/result_1/peakNPixels"][self._index, :num_peaks] = (
+            np.array(peaks["num_pixels"], dtype=np.float32)
+        )
+        self._outh5["/entry_1/result_1/peakTotalIntensity"][self._index, :num_peaks] = (
+            np.array(peaks["intensity"], dtype=np.float32)
+        )
+        self._outh5["/entry_1/result_1/peakMaxIntensity"][self._index, :num_peaks] = (
+            np.array(peaks["max_pixel_intensity"], dtype=np.float32)
+        )
+        self._outh5["/entry_1/result_1/peakSNR"][self._index, :num_peaks] = np.array(
+            peaks["snr"], dtype=np.float32
+        )
 
         self._outh5["/LCLS/machineTime"][self._index] = timestamp_seconds
         self._outh5["/LCLS/machineTimeNanoSeconds"][self._index] = timestamp_nanoseconds
@@ -265,14 +284,18 @@ class CxiWriter:
         photon_energy: float,
         clen: float,
     ) -> None:
-        ch_rows: npt.NDArray[np.float64] = peaks[:, 0] * self._raw_det_shape[-2] + peaks[:, 1]
+        ch_rows: npt.NDArray[np.float64] = (
+            peaks[:, 0] * self._raw_det_shape[-2] + peaks[:, 1]
+        )
         ch_cols: npt.NDArray[np.float64] = peaks[:, 2]
 
         if self._outh5["/entry_1/data_1/data"].shape[0] <= self._index:
             self._outh5["entry_1/data_1/data"].resize(self._index + 1, axis=0)
             ds_key: str
             for ds_key in self._outh5["/entry_1/result_1"].keys():
-                self._outh5[f"/entry_1/result_1/{ds_key}"].resize(self._index + 1, axis=0)
+                self._outh5[f"/entry_1/result_1/{ds_key}"].resize(
+                    self._index + 1, axis=0
+                )
             for ds_key in (
                 "machineTime",
                 "machineTimeNanoSeconds",
@@ -282,18 +305,40 @@ class CxiWriter:
             ):
                 self._outh5[f"/LCLS/{ds_key}"].resize(self._index + 1, axis=0)
 
-        self._outh5["/entry_1/data_1/data"][self._index, :, :] = img.reshape(-1, img.shape[-1])
+        self._outh5["/entry_1/data_1/data"][self._index, :, :] = img.reshape(
+            -1, img.shape[-1]
+        )
         self._outh5["/entry_1/result_1/nPeaks"][self._index] = peaks.shape[0]
-        self._outh5["/entry_1/result_1/peakXPosRaw"][self._index, : peaks.shape[0]] = ch_cols.astype("int")
-        self._outh5["/entry_1/result_1/peakYPosRaw"][self._index, : peaks.shape[0]] = ch_rows.astype("int")
-        self._outh5["/entry_1/result_1/rcent"][self._index, : peaks.shape[0]] = peaks[:, 6]
-        self._outh5["/entry_1/result_1/ccent"][self._index, : peaks.shape[0]] = peaks[:, 7]
-        self._outh5["/entry_1/result_1/rmin"][self._index, : peaks.shape[0]] = peaks[:, 10]
-        self._outh5["/entry_1/result_1/rmax"][self._index, : peaks.shape[0]] = peaks[:, 11]
-        self._outh5["/entry_1/result_1/cmin"][self._index, : peaks.shape[0]] = peaks[:, 12]
-        self._outh5["/entry_1/result_1/cmax"][self._index, : peaks.shape[0]] = peaks[:, 13]
-        self._outh5["/entry_1/result_1/peakTotalIntensity"][self._index, : peaks.shape[0]] = peaks[:, 5]
-        self._outh5["/entry_1/result_1/peakMaxIntensity"][self._index, : peaks.shape[0]] = peaks[:, 4]
+        self._outh5["/entry_1/result_1/peakXPosRaw"][self._index, : peaks.shape[0]] = (
+            ch_cols.astype("int")
+        )
+        self._outh5["/entry_1/result_1/peakYPosRaw"][self._index, : peaks.shape[0]] = (
+            ch_rows.astype("int")
+        )
+        self._outh5["/entry_1/result_1/rcent"][self._index, : peaks.shape[0]] = peaks[
+            :, 6
+        ]
+        self._outh5["/entry_1/result_1/ccent"][self._index, : peaks.shape[0]] = peaks[
+            :, 7
+        ]
+        self._outh5["/entry_1/result_1/rmin"][self._index, : peaks.shape[0]] = peaks[
+            :, 10
+        ]
+        self._outh5["/entry_1/result_1/rmax"][self._index, : peaks.shape[0]] = peaks[
+            :, 11
+        ]
+        self._outh5["/entry_1/result_1/cmin"][self._index, : peaks.shape[0]] = peaks[
+            :, 12
+        ]
+        self._outh5["/entry_1/result_1/cmax"][self._index, : peaks.shape[0]] = peaks[
+            :, 13
+        ]
+        self._outh5["/entry_1/result_1/peakTotalIntensity"][
+            self._index, : peaks.shape[0]
+        ] = peaks[:, 5]
+        self._outh5["/entry_1/result_1/peakMaxIntensity"][
+            self._index, : peaks.shape[0]
+        ] = peaks[:, 4]
 
         peaks_cenx: npt.NDArray[np.float64] = (
             self._i_x[
@@ -314,7 +359,9 @@ class CxiWriter:
             - self._ipy
         )
         peak_radius: npt.NDArray[np.float64] = np.sqrt(peaks_cenx**2 + peaks_ceny**2)
-        self._outh5["/entry_1/result_1/peakRadius"][self._index, : peaks.shape[0]] = peak_radius
+        self._outh5["/entry_1/result_1/peakRadius"][
+            self._index, : peaks.shape[0]
+        ] = peak_radius
 
         self._outh5["/LCLS/machineTime"][self._index] = timestamp_seconds
         self._outh5["/LCLS/machineTimeNanoSeconds"][self._index] = timestamp_nanoseconds
@@ -340,22 +387,36 @@ class CxiWriter:
         algo: Literal["PyAlgos", "Peakfinder8", "Peakfinder8_v2"] = "Peakfinder8",
     ):
         data_shape: Tuple[int, ...] = self._outh5["/entry_1/data_1/data"].shape
-        self._outh5["/entry_1/data_1/data"].resize((num_hits, data_shape[1], data_shape[2]))
+        self._outh5["/entry_1/data_1/data"].resize(
+            (num_hits, data_shape[1], data_shape[2])
+        )
         self._outh5["/entry_1/result_1/nPeaks"].resize((num_hits,))
 
         keys: List[str]
         if "Peakfinder8" in algo:
             keys = [
-                "peakXPosRaw", "peakYPosRaw", "peakNPixels",
-                "peakTotalIntensity", "peakMaxIntensity", "peakSNR",
+                "peakXPosRaw",
+                "peakYPosRaw",
+                "peakNPixels",
+                "peakTotalIntensity",
+                "peakMaxIntensity",
+                "peakSNR",
             ]
             if algo == "Peakfinder8_v2":
                 keys.append("peakPanelNumRaw")
         else:
             keys = [
-                "peakXPosRaw", "peakYPosRaw", "rcent", "ccent",
-                "rmin", "rmax", "cmin", "cmax",
-                "peakTotalIntensity", "peakMaxIntensity", "peakRadius",
+                "peakXPosRaw",
+                "peakYPosRaw",
+                "rcent",
+                "ccent",
+                "rmin",
+                "rmax",
+                "cmin",
+                "cmax",
+                "peakTotalIntensity",
+                "peakMaxIntensity",
+                "peakRadius",
             ]
 
         key: str
@@ -363,14 +424,19 @@ class CxiWriter:
             self._outh5[f"/entry_1/result_1/{key}"].resize((num_hits, max_peaks))
 
         for key in [
-            "eventNumber", "machineTime", "machineTimeNanoSeconds",
-            "fiducial", "detector_1/EncoderValue", "photon_energy_eV",
+            "eventNumber",
+            "machineTime",
+            "machineTimeNanoSeconds",
+            "fiducial",
+            "detector_1/EncoderValue",
+            "photon_energy_eV",
         ]:
             self._outh5[f"/LCLS/{key}"].resize((num_hits,))
         self._outh5.close()
 
 
 # ── write_master_file ─────────────────────────────────────────────────────────
+
 
 def write_master_file(
     mpi_size: int,
@@ -415,8 +481,12 @@ def write_master_file(
             powder_misses = f["entry_1/data_1/powderMisses"][:].copy()
         else:
             assert powder_misses is not None
-            powder_hits = np.maximum(powder_hits, f["entry_1/data_1/powderHits"][:].copy())
-            powder_misses = np.maximum(powder_misses, f["entry_1/data_1/powderMisses"][:].copy())
+            powder_hits = np.maximum(
+                powder_hits, f["entry_1/data_1/powderHits"][:].copy()
+            )
+            powder_misses = np.maximum(
+                powder_misses, f["entry_1/data_1/powderMisses"][:].copy()
+            )
         f.close()
 
     vfname: Path = Path(outdir) / f"{exp}_r{run:0>4}{tag}.cxi"
@@ -431,7 +501,8 @@ def write_master_file(
                 for i, fn in enumerate(fnames):
                     rank_idx: int = ranks_with_hits[i]
                     vsrc = h5py.VirtualSource(
-                        fn, dname,
+                        fn,
+                        dname,
                         shape=(n_hits_per_rank[rank_idx],) + shape_list[dnum][1:],
                     )
                     if len(shape_list[dnum]) == 1:
@@ -450,6 +521,7 @@ def write_master_file(
 
 # ── libpressio helpers ────────────────────────────────────────────────────────
 
+
 def generate_libpressio_configuration(
     compressor: Literal["sz3", "qoz"],
     roi_window_size: int,
@@ -458,7 +530,10 @@ def generate_libpressio_configuration(
     libpressio_mask: npt.NDArray,
 ) -> Dict[str, Any]:
     if compressor == "qoz":
-        pressio_opts: Dict[str, Any] = {"pressio:abs": abs_error, "qoz": {"qoz:stride": 8}}
+        pressio_opts: Dict[str, Any] = {
+            "pressio:abs": abs_error,
+            "qoz": {"qoz:stride": 8},
+        }
     elif compressor == "sz3":
         pressio_opts = {"pressio:abs": abs_error}
 
@@ -487,7 +562,12 @@ def generate_libpressio_configuration(
                         "pressio": {"pressio:compressor": compressor},
                     },
                     "composite": {
-                        "composite:plugins": ["size", "time", "input_stats", "error_stat"],
+                        "composite:plugins": [
+                            "size",
+                            "time",
+                            "input_stats",
+                            "error_stat",
+                        ],
                     },
                 },
             }
@@ -514,20 +594,24 @@ def generate_libpressio_configuration(
 
     reshaped_mask: npt.NDArray[np.uint8]
     if libpressio_mask.ndim < 4:
-        new_shape: Tuple[int, ...] = ((1,) * (4 - libpressio_mask.ndim)) + libpressio_mask.shape
+        new_shape: Tuple[int, ...] = (
+            (1,) * (4 - libpressio_mask.ndim)
+        ) + libpressio_mask.shape
         reshaped_mask = libpressio_mask.reshape(new_shape)
     else:
         reshaped_mask = libpressio_mask
 
-    lp_json["compressor_config"]["pressio"]["roibin"]["background"]["mask_binning:mask"] = (
-        1 - reshaped_mask
-    )
+    lp_json["compressor_config"]["pressio"]["roibin"]["background"][
+        "mask_binning:mask"
+    ] = (1 - reshaped_mask)
     return lp_json
 
 
 def _libpressio_config_pyalgos(lp_json: Dict[str, Any], peaks: Any) -> Dict[str, Any]:
     peaks_new: npt.NDArray[np.uint64] = np.zeros((len(peaks), 4), dtype=np.uint64)
-    peaks_new[:, 1:] = np.ascontiguousarray(np.uint64(peaks[:, [0, 1, 2]])).astype(np.uint64)
+    peaks_new[:, 1:] = np.ascontiguousarray(np.uint64(peaks[:, [0, 1, 2]])).astype(
+        np.uint64
+    )
     lp_json["compressor_config"]["pressio"]["roibin"]["roibin:centers"] = peaks_new
     return lp_json
 
@@ -535,7 +619,9 @@ def _libpressio_config_pyalgos(lp_json: Dict[str, Any], peaks: Any) -> Dict[str,
 def _libpressio_config_pf8(
     lp_json: Dict[str, Any], peaks: Peakfinder8PeakList
 ) -> Dict[str, Any]:
-    peaks_rotated: npt.NDArray[np.uint64] = np.zeros((peaks["num_peaks"], 4), dtype=np.uint64)
+    peaks_rotated: npt.NDArray[np.uint64] = np.zeros(
+        (peaks["num_peaks"], 4), dtype=np.uint64
+    )
     peaks_rotated[:, 2] = np.array(peaks["ss"]).astype(np.uint64)
     peaks_rotated[:, 3] = np.array(peaks["fs"]).astype(np.uint64)
     lp_json["compressor_config"]["pressio"]["roibin"]["roibin:centers"] = peaks_rotated
@@ -553,6 +639,7 @@ def add_peaks_to_libpressio_configuration(
 
 
 # ── MetricsWriter ─────────────────────────────────────────────────────────────
+
 
 class MetricsWriter:
     def __init__(
@@ -587,11 +674,15 @@ class MetricsWriter:
         self._rng = np.random.default_rng(int(debug_seed) + self.rank)
         self._seen = 0
         self._reservoir: list[dict[str, Any]] = []
-        self._flush_every: int = max(1, self.n_debug_events)  # flush once reservoir is full, then every n_debug_events replacements
+        self._flush_every: int = max(
+            1, self.n_debug_events
+        )  # flush once reservoir is full, then every n_debug_events replacements
         self._replacements_since_flush: int = 0
 
         self.outdir.mkdir(parents=True, exist_ok=True)
-        self.filename = self.outdir / f"r{self.run:04d}_metrics_rank{self.rank:03d}{self.tag}.h5"
+        self.filename = (
+            self.outdir / f"r{self.run:04d}_metrics_rank{self.rank:03d}{self.tag}.h5"
+        )
         self.file: Optional[h5py.File] = None
         self.event_count = 0
 
@@ -616,7 +707,9 @@ class MetricsWriter:
         self.event_count += 1
         self.file.flush()
 
-    def _write_metrics_recursive(self, group: h5py.Group, metrics: Dict[str, Any]) -> None:
+    def _write_metrics_recursive(
+        self, group: h5py.Group, metrics: Dict[str, Any]
+    ) -> None:
         for key, value in metrics.items():
             k = str(key)
             if isinstance(value, dict):
@@ -635,7 +728,11 @@ class MetricsWriter:
         original_img: np.ndarray,
         reconstructed_img: np.ndarray,
     ) -> None:
-        if (not self.save_debug_panels) or (self.n_debug_events <= 0) or (self.panels_per_event <= 0):
+        if (
+            (not self.save_debug_panels)
+            or (self.n_debug_events <= 0)
+            or (self.panels_per_event <= 0)
+        ):
             return
         P = int(original_img.shape[0])
         if P <= 0:
@@ -646,8 +743,14 @@ class MetricsWriter:
             "event_id": int(event_id),
             "timestamp": float(timestamp),
             "panel_ids": panel_ids,
-            "original": [np.asarray(original_img[int(p)], dtype=self.debug_dtype, order="C") for p in panel_ids],
-            "reconstructed": [np.asarray(reconstructed_img[int(p)], dtype=self.debug_dtype, order="C") for p in panel_ids],
+            "original": [
+                np.asarray(original_img[int(p)], dtype=self.debug_dtype, order="C")
+                for p in panel_ids
+            ],
+            "reconstructed": [
+                np.asarray(reconstructed_img[int(p)], dtype=self.debug_dtype, order="C")
+                for p in panel_ids
+            ],
         }
         self._seen += 1
         if len(self._reservoir) < self.n_debug_events:
@@ -665,7 +768,9 @@ class MetricsWriter:
                 self._flush_debug_panels()
                 self._replacements_since_flush = 0
 
-    def _write_small_dataset(self, group: h5py.Group, name: str, arr2d: np.ndarray) -> None:
+    def _write_small_dataset(
+        self, group: h5py.Group, name: str, arr2d: np.ndarray
+    ) -> None:
         if name in group:
             del group[name]
         a = np.asarray(arr2d, dtype=self.debug_dtype, order="C")
@@ -721,6 +826,7 @@ class MetricsWriter:
 
 
 # ── psqrt helper ──────────────────────────────────────────────────────────────
+
 
 def psqrt_roundtrip_fracbits_gain_equalized(
     x: np.ndarray,

@@ -169,22 +169,36 @@ class DrFindPeaksPyAlgosParameters(TaskParameters):
         description="Determine further quantization scale.",
     )
 
-    dr_method: Optional[Literal["wavelet_quant_zerotree_compress",
-                                "wavelet_dionisio", "wavelet_spiht",
-                                "wavelet_bishrink_zerotree_compress",
-                                "wavelet_bishrink_rpca","wavelet_sure_shrink",
-                                "wavelet_simple_shrink", "wavelet_hmt_shrink",
-                                "wavelet_bivariate_shrink", "wavelet_bayes_shrink",
-                                "stable_pcp", "tv_rpca",
-                                "tv_reg_rpca", "tv_reg_svd_rpca",
-                                "rpca_altproj", "rpca_altproj_thresh",
-                                "median_bg", "morph_open", "pysz_codec",
-                                "rsvd_density_power", "wavelet_mkt",
-                                "libpressio_sz3", "libpressio_qoz"]] = Field(
+    dr_method: Optional[
+        Literal[
+            "wavelet_quant_zerotree_compress",
+            "wavelet_dionisio",
+            "wavelet_spiht",
+            "wavelet_bishrink_zerotree_compress",
+            "wavelet_bishrink_rpca",
+            "wavelet_sure_shrink",
+            "wavelet_simple_shrink",
+            "wavelet_hmt_shrink",
+            "wavelet_bivariate_shrink",
+            "wavelet_bayes_shrink",
+            "stable_pcp",
+            "tv_rpca",
+            "tv_reg_rpca",
+            "tv_reg_svd_rpca",
+            "rpca_altproj",
+            "rpca_altproj_thresh",
+            "median_bg",
+            "morph_open",
+            "pysz_codec",
+            "rsvd_density_power",
+            "wavelet_mkt",
+            "libpressio_sz3",
+            "libpressio_qoz",
+        ]
+    ] = Field(
         None,
         description="For DrAlgo: reduction method to use. None disables DR.",
     )
-    
 
     abs_error: float = Field(
         1e-3,
@@ -215,9 +229,6 @@ class DrFindPeaksPyAlgosParameters(TaskParameters):
         "INTERP_LORENZO",
         description="SZ compression algorithm to use (if enabled).",
     )
-
-
-
 
     @validator("out_file", always=True)
     def validate_out_file(cls, out_file: str, values: Dict[str, Any]) -> str:

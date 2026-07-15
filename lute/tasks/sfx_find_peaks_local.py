@@ -804,19 +804,19 @@ class FindPeaksSFXLocal(Task):
             det: Dict[str, Any] = json.loads(f.attrs["dxtbx_detector_json"])
 
         panel: Dict[str, Any] = det["panels"][0]
-        origin: List[float] = panel["origin"]      # [x_mm, y_mm, z_mm]
-        ps: List[float] = panel["pixel_size"]       # [fs_mm, ss_mm]
+        origin: List[float] = panel["origin"]  # [x_mm, y_mm, z_mm]
+        ps: List[float] = panel["pixel_size"]  # [fs_mm, ss_mm]
         nx: int
         ny: int
-        nx, ny = panel["image_size"]                # [n_fast, n_slow]
+        nx, ny = panel["image_size"]  # [n_fast, n_slow]
 
         # Beam center in pixel coordinates
         # x_lab(j) = origin[0] + j*ps[0]*fast[0]  (fast=[1,0,0])
         # y_lab(i) = origin[1] + i*ps[1]*slow[1]  (slow=[0,-1,0])
         # Set to zero: bcx = -origin[0]/ps[0], bcy = origin[1]/ps[1]
-        bcx: float = -origin[0] / ps[0]   # col (fast axis) of beam center
-        bcy: float = origin[1] / ps[1]    # row (slow axis) of beam center
-        clen: float = abs(origin[2])       # detector distance in mm
+        bcx: float = -origin[0] / ps[0]  # col (fast axis) of beam center
+        bcy: float = origin[1] / ps[1]  # row (slow axis) of beam center
+        clen: float = abs(origin[2])  # detector distance in mm
 
         cols: npt.NDArray[np.float64]
         rows: npt.NDArray[np.float64]
@@ -875,7 +875,9 @@ class FindPeaksSFXLocal(Task):
                     img, mask, seconds, nanoseconds, fiducials, clen, photon_energy
                 )
             else:
-                yield EventData(img, seconds, nanoseconds, fiducials, clen, photon_energy)
+                yield EventData(
+                    img, seconds, nanoseconds, fiducials, clen, photon_energy
+                )
 
     def _run(self) -> None:
         rank: int = COMM_WORLD.Get_rank()
@@ -975,8 +977,8 @@ class FindPeaksSFXLocal(Task):
                 )
 
                 # Single monolithic panel: asic == full image
-                asic_nx: int = img.shape[1]   # fast-scan size
-                asic_ny: int = img.shape[0]   # slow-scan size
+                asic_nx: int = img.shape[1]  # fast-scan size
+                asic_ny: int = img.shape[0]  # slow-scan size
                 nasics_x: int = 1
                 nasics_y: int = 1
 

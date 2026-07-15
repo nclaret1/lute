@@ -66,7 +66,11 @@ class LibpressioQoZAlgo(XhatDrAlgo):
         X_hat = decompressed.reshape(m, n).astype(Xc.dtype)
 
         orig_bytes = int(Xc.size * Xc.itemsize)
-        comp_bytes = len(compressed) if hasattr(compressed, "__len__") else int(compressed.nbytes)
+        comp_bytes = (
+            len(compressed)
+            if hasattr(compressed, "__len__")
+            else int(compressed.nbytes)
+        )
 
         self.X_hat_ = X_hat
         self.Resid_ = X_hat - Xc
@@ -93,7 +97,9 @@ class LibpressioQoZAlgo(XhatDrAlgo):
         metrics["storage"]["compression_ratio"] = self.compression_ratio_
         metrics["storage"]["compressed_bytes"] = self.compressed_bytes_
         metrics["storage"]["original_bytes"] = (
-            int(self.X_hat_.size * self.X_hat_.itemsize) if self.X_hat_ is not None else None
+            int(self.X_hat_.size * self.X_hat_.itemsize)
+            if self.X_hat_ is not None
+            else None
         )
         metrics["quality"]["max_abs_err"] = self.max_abs_err_
         metrics["quality"]["abs_error_bound"] = self.abs_error
@@ -101,11 +107,13 @@ class LibpressioQoZAlgo(XhatDrAlgo):
 
     def get_params(self, deep: bool = True) -> Dict[str, Any]:
         p = super().get_params(deep)
-        p.update({
-            "abs_error": self.abs_error,
-            "bin_size": self.bin_size,
-            "roi_window_size": self.roi_window_size,
-        })
+        p.update(
+            {
+                "abs_error": self.abs_error,
+                "bin_size": self.bin_size,
+                "roi_window_size": self.roi_window_size,
+            }
+        )
         return p
 
     def set_params(self, **params: Any) -> "LibpressioQoZAlgo":

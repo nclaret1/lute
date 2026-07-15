@@ -65,7 +65,7 @@ def import_task(task_name: str) -> Type[Task]:
         from .sfx_find_peaks_local import FindPeaksSFXLocal
 
         return FindPeaksSFXLocal
-    
+
     if task_name == "ConcatenateStreamFiles":
         from .sfx_index import ConcatenateStreamFiles
 
@@ -135,6 +135,5 @@ def import_task(task_name: str) -> Type[Task]:
         from .test import TestRequest
 
         return TestRequest
-    
 
     raise TaskNotFoundError

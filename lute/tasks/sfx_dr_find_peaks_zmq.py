@@ -196,6 +196,7 @@ class SfxDrFindPeaksZmq(Task):
         _use_stream_splitting: bool = par.n_senders == 0
         if _use_stream_splitting:
             import glob as _glob
+
             hutch: str = exp[:3].lower()
             xtc_dir: str = f"/sdf/data/lcls/ds/{hutch}/{exp}/xtc"
             _stream_files: List[str] = sorted(
@@ -300,7 +301,8 @@ class SfxDrFindPeaksZmq(Task):
 
                 push_log_suffix = f"_s{s:02d}" if n_senders > 1 else ""
                 push_log_path: Path = (
-                    Path(par.outdir) / f"sfx_dr_zmq_push_r{run:04d}{push_log_suffix}.log"
+                    Path(par.outdir)
+                    / f"sfx_dr_zmq_push_r{run:04d}{push_log_suffix}.log"
                 )
                 push_log = open(push_log_path, "w")
                 push_logs.append(push_log)
@@ -410,7 +412,11 @@ class SfxDrFindPeaksZmq(Task):
                 obj: Dict[str, Any] = recv()
             except zmq.Again:
                 logger.error("ZMQ receive timed out during event loop")
-                if rank == 0 and push_procs and not self._is_running(push_procs[rank % n_senders]):
+                if (
+                    rank == 0
+                    and push_procs
+                    and not self._is_running(push_procs[rank % n_senders])
+                ):
                     logger.error("Sender subprocess has exited; stopping.")
                 break
 
@@ -609,7 +615,10 @@ class SfxDrFindPeaksZmq(Task):
                 # Only build a post-peak libpressio config when compression is
                 # requested AND the DR algo isn't already a libpressio variant
                 # (to avoid compressing twice).
-                _dr_is_libpressio = par.dr_method in ("libpressio_sz3", "libpressio_qoz")
+                _dr_is_libpressio = par.dr_method in (
+                    "libpressio_sz3",
+                    "libpressio_qoz",
+                )
                 if par.compression is not None and not _dr_is_libpressio:
                     libpressio_config = generate_libpressio_configuration(
                         compressor=par.compression.compressor,
@@ -708,9 +717,7 @@ class SfxDrFindPeaksZmq(Task):
                 num_hits += 1
 
             if num_peaks >= par.min_peaks:
-                powder_hits = numpy.maximum(
-                    powder_hits, img.reshape(-1, img.shape[-1])
-                )
+                powder_hits = numpy.maximum(powder_hits, img.reshape(-1, img.shape[-1]))
             else:
                 powder_misses = numpy.maximum(
                     powder_misses, img.reshape(-1, img.shape[-1])
@@ -774,7 +781,9 @@ class SfxDrFindPeaksZmq(Task):
                 print(f"Number of events processed: {total_events}", file=fh)
                 print(f"Number of hits found: {total_hits}", file=fh)
                 if total_events:
-                    print(f"Fractional hit rate: {total_hits / total_events:.4f}", file=fh)
+                    print(
+                        f"Fractional hit rate: {total_hits / total_events:.4f}", file=fh
+                    )
 
             with open(Path(par.out_file), "w") as fh:
                 print(str(master_fname), file=fh)

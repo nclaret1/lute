@@ -108,7 +108,9 @@ class DrAlgo(ABC):
         X_filled = np.where(M.astype(bool), X, 0.0)
         num = gaussian_filter(X_filled.astype(np.float64), sigma=sigma)
         den = gaussian_filter(M, sigma=sigma)
-        result = np.where(den >= confidence_threshold, num / np.maximum(den, 1e-8), X_filled)
+        result = np.where(
+            den >= confidence_threshold, num / np.maximum(den, 1e-8), X_filled
+        )
         return result.astype(X.dtype)
 
     def _build_preprocess_mask(self, X: npt.NDArray) -> npt.NDArray:
@@ -118,7 +120,7 @@ class DrAlgo(ABC):
             M &= self.build_epix10ka_cross_mask(X.shape)
         return M
 
-    #can actually use "DrAlgo" for forward reference
+    # can actually use "DrAlgo" for forward reference
     def fit(self, X: npt.ArrayLike, y: Any = None, **kwargs: Any) -> "DrAlgo":
         storage_ref = kwargs.pop("storage_ref", None)
 
@@ -126,8 +128,12 @@ class DrAlgo(ABC):
         if self.preprocess_nan:
             M = self._build_preprocess_mask(X)
             if not M.all():
-                X_inpainted = self.normalized_convolution(X, self.nan_sigma, self.nan_confidence_threshold, mask=M)
-                X = np.where(M, X, X_inpainted)  # only replace invalid pixels (cross + NaN)
+                X_inpainted = self.normalized_convolution(
+                    X, self.nan_sigma, self.nan_confidence_threshold, mask=M
+                )
+                X = np.where(
+                    M, X, X_inpainted
+                )  # only replace invalid pixels (cross + NaN)
         self.factors_ = {}
         self.errors_ = []
         self.final_error_ = None

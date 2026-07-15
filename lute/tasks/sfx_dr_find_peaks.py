@@ -19,6 +19,7 @@ import numpy as np
 import panel as pn  # type: ignore
 from mpi4py.MPI import COMM_WORLD, SUM
 from numpy.typing import NDArray
+
 try:
     from psalgos.pypsalgos import PyAlgos  # type: ignore
     from psana import Detector, EventId, MPIDataSource  # type: ignore
@@ -403,10 +404,24 @@ class MetricsWriter:
             "event_id": int(event_id),
             "timestamp": float(timestamp),
             "panel_ids": panel_ids,
-            "original": [np.asarray(original_img[int(p)], dtype=self.debug_dtype, order="C") for p in panel_ids],
-            "reconstructed": [np.asarray(reconstructed_img[int(p)], dtype=self.debug_dtype, order="C") for p in panel_ids],
-            "found_peaks_ss": np.asarray(found_peaks_ss, dtype=np.int32) if found_peaks_ss is not None else None,
-            "found_peaks_fs": np.asarray(found_peaks_fs, dtype=np.int32) if found_peaks_fs is not None else None,
+            "original": [
+                np.asarray(original_img[int(p)], dtype=self.debug_dtype, order="C")
+                for p in panel_ids
+            ],
+            "reconstructed": [
+                np.asarray(reconstructed_img[int(p)], dtype=self.debug_dtype, order="C")
+                for p in panel_ids
+            ],
+            "found_peaks_ss": (
+                np.asarray(found_peaks_ss, dtype=np.int32)
+                if found_peaks_ss is not None
+                else None
+            ),
+            "found_peaks_fs": (
+                np.asarray(found_peaks_fs, dtype=np.int32)
+                if found_peaks_fs is not None
+                else None
+            ),
         }
 
         self._seen += 1
@@ -548,9 +563,11 @@ class DrFindPeaksPyAlgos(Task):
         DO_LOG = True
         APPLY_PSQRT_KEV = False
         FRAC_BITS = 0.75
-        USE_DWT_PEAKFINDER = True  # set True to use DWT peak finder when dr_method='wavelet_dionisio'
+        USE_DWT_PEAKFINDER = (
+            True  # set True to use DWT peak finder when dr_method='wavelet_dionisio'
+        )
         DWT_PEAK_SIG_FACTOR = self._task_parameters.dwt_peak_find_sig_factor
-        DWT_PEAK_ABS_THR    = self._task_parameters.dwt_peak_find_abs_thr
+        DWT_PEAK_ABS_THR = self._task_parameters.dwt_peak_find_abs_thr
 
         self._task_parameters = cast(
             DrFindPeaksPyAlgosParameters, self._task_parameters
@@ -708,7 +725,12 @@ class DrFindPeaksPyAlgos(Task):
                         np.save(bad_img_path, panel)
                         print(f"Saved failed frame to {bad_img_path}")
                 d = reconstructed_img - original_img
-                print("max_abs_diff", float(np.nanmax(np.abs(d))), "nnz", int(np.sum(d != 0)))
+                print(
+                    "max_abs_diff",
+                    float(np.nanmax(np.abs(d))),
+                    "nnz",
+                    int(np.sum(d != 0)),
+                )
                 img = reconstructed_img
 
             # Initialize peak finder + writers once we have an image
@@ -780,9 +802,13 @@ class DrFindPeaksPyAlgos(Task):
                 powder_misses: NDArray[numpy.float64] = numpy.zeros(det_shape)
 
             # Find peaks
-            if USE_DWT_PEAKFINDER and self._task_parameters.dr_method == "wavelet_dionisio":
+            if (
+                USE_DWT_PEAKFINDER
+                and self._task_parameters.dr_method == "wavelet_dionisio"
+            ):
                 if self._task_parameters.use_dwt_abs_thr:
                     from lute.DrAlgo.wavelet_dionisio import DWT_peak_finder
+
                     peaks = DWT_peak_finder(img, abs_thr=DWT_PEAK_ABS_THR)
                     peaks_v3r3: Any = alg.peak_finder_v3r3(
                         img,
@@ -807,6 +833,7 @@ class DrFindPeaksPyAlgos(Task):
 
                 elif self._task_parameters.use_dwt_sig_factor:
                     from lute.DrAlgo.wavelet_dionisio import DWT_peak_finder
+
                     peaks: Any = DWT_peak_finder(img, n_sigma=DWT_PEAK_SIG_FACTOR)
                     peaks_v3r3: Any = alg.peak_finder_v3r3(
                         img,
@@ -883,7 +910,9 @@ class DrFindPeaksPyAlgos(Task):
                 # Save debug panels.  event_id = rank-local hit index (0-based).
                 # Rank 0 is written first in the master CXI, so this equals the
                 # stream's Event: //N index directly — no coordinate matching needed.
-                rows_per_panel: int = int(img.shape[1]) if img.ndim == 3 else img.shape[0]
+                rows_per_panel: int = (
+                    int(img.shape[1]) if img.ndim == 3 else img.shape[0]
+                )
                 pk_ss = (peaks[:, 0] * rows_per_panel + peaks[:, 1]).astype(np.int32)
                 pk_fs = peaks[:, 2].astype(np.int32)
                 metrics_writer.maybe_write_debug_panels(
@@ -924,7 +953,9 @@ class DrFindPeaksPyAlgos(Task):
             mask=mask,
         )
 
-        file_writer.optimize_and_close_file(num_hits=num_hits, max_peaks=self._task_parameters.max_peaks, algo="PyAlgos")
+        file_writer.optimize_and_close_file(
+            num_hits=num_hits, max_peaks=self._task_parameters.max_peaks, algo="PyAlgos"
+        )
 
         COMM_WORLD.Barrier()
 
@@ -936,8 +967,14 @@ class DrFindPeaksPyAlgos(Task):
 
         if ds.rank == 0:
             if num_hits_total == 0:
-                print("WARNING: No hits found across all ranks. Skipping master file creation.", flush=True)
-                with open(Path(self._task_parameters.outdir) / f"peakfinding{tag}.summary", "w") as f:
+                print(
+                    "WARNING: No hits found across all ranks. Skipping master file creation.",
+                    flush=True,
+                )
+                with open(
+                    Path(self._task_parameters.outdir) / f"peakfinding{tag}.summary",
+                    "w",
+                ) as f:
                     print(f"Number of events processed: {num_events_total}", file=f)
                     print(f"Number of hits found: 0", file=f)
                     print(f"Fractional hit rate: 0.00", file=f)
@@ -953,18 +990,30 @@ class DrFindPeaksPyAlgos(Task):
                     n_hits_total=num_hits_total,
                 )
 
-                with open(Path(self._task_parameters.outdir) / f"peakfinding{tag}.summary", "w") as f:
+                with open(
+                    Path(self._task_parameters.outdir) / f"peakfinding{tag}.summary",
+                    "w",
+                ) as f:
                     print(f"Number of events processed: {num_events_total}", file=f)
                     print(f"Number of hits found: {num_hits_total}", file=f)
-                    print(f"Fractional hit rate: {(num_hits_total/num_events_total):.2f}", file=f)
+                    print(
+                        f"Fractional hit rate: {(num_hits_total/num_events_total):.2f}",
+                        file=f,
+                    )
                     print(f"No. hits per rank: {num_hits_per_rank}", file=f)
 
                 with h5py.File(master_fname, "r") as f:
-                    final_powder_hits: NDArray[numpy.float64] = f["entry_1/data_1/powderHits"][:]
-                    final_powder_misses: NDArray[numpy.float64] = f["entry_1/data_1/powderMisses"][:]
+                    final_powder_hits: NDArray[numpy.float64] = f[
+                        "entry_1/data_1/powderHits"
+                    ][:]
+                    final_powder_misses: NDArray[numpy.float64] = f[
+                        "entry_1/data_1/powderMisses"
+                    ][:]
 
                 if ENABLE_ELOG:
-                    powder_plots: pn.Tabs = self._create_powder_plots(det, final_powder_hits, final_powder_misses)
+                    powder_plots: pn.Tabs = self._create_powder_plots(
+                        det, final_powder_hits, final_powder_misses
+                    )
                     text_summary: Dict[str, str] = {
                         "Number of events processed": str(num_events_total),
                         "Number of hits found": str(num_hits_total),
@@ -972,7 +1021,10 @@ class DrFindPeaksPyAlgos(Task):
                     }
                     self._result.summary = (
                         text_summary,
-                        ElogSummaryPlots(f"r{self._task_parameters.lute_config.run}/powders", powder_plots),
+                        ElogSummaryPlots(
+                            f"r{self._task_parameters.lute_config.run}/powders",
+                            powder_plots,
+                        ),
                     )
 
                 with open(Path(self._task_parameters.out_file), "w") as f:
