@@ -1,0 +1,32 @@
+py_sources = [
+    'DrAlgo.py',
+    '__init__.py',
+    'libpressio_qoz.py',
+    'libpressio_sz.py',
+    'median_bg.py',
+    'morph_open.py',
+    'rpca_altproj.py',
+    'rpca_altproj_thresh.py',
+    'rsvd_density_power.py',
+    'stable_pcp.py',
+    'test.py',
+    'tv_reg_rpca.py',
+    'tv_reg_svd_rpca.py',
+    'tv_rpca.py',
+    'wavelet_bayes_shrink.py',
+    'wavelet_bishrink_rpca.py',
+    'wavelet_bishrink_zerotree_compress.py',
+    'wavelet_bivariate_shrink.py',
+    'wavelet_dionisio.py',
+    'wavelet_hmt_shrink.py',
+    'wavelet_quant_zerotree_compress.py',
+    'wavelet_simple_shrink.py',
+    'wavelet_spiht.py',
+    'wavelet_sure_shrink.py',
+]
+
+py3.install_sources(
+    py_sources,
+    pure: false,
+    subdir: 'lute/DrAlgo',
+)

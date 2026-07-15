@@ -1,0 +1,55 @@
+%YAML 1.3
+---
+title: "SFX: Streaming XTC1 peak finding - r0016"
+experiment: "mfxx49820"
+run: "16"
+lute_version: 0.1
+task_timeout: 86400
+work_dir: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/stream_peakfinder/r0016/"
+...
+---
+INSTRUMENT: "mfx"
+EXPERIMENT_DIR: "/sdf/data/lcls/ds/{{ INSTRUMENT }}/{{ experiment }}"
+OUT_ROOT: "{{ work_dir }}"
+
+StreamFindPeaksPyAlgos:
+  # --- ZMQ / data source -------------------------------------------------
+  xtc1_access_pattern:
+    epix10k2M:
+      - xtc2_attr_name: "calib"
+        object_name: "epix10k2M"
+        object_type: "psana.Detector"
+        object_field_name: "calib"
+  # nevents: 100   # uncomment to limit events for testing
+
+  # --- Detector / geometry -----------------------------------------------
+  det_name: "epix10k2M"
+  camera_length_mm: "MFX:ROB:CONT:POS:Z"      # TODO: replace with actual detector distance for r0016
+  photon_energy_eV: 0.0        # 0 = unknown; set to e.g. 9500.0 if known
+
+  # --- Output ------------------------------------------------------------
+  outdir: "{{ OUT_ROOT }}"
+  tag: ""
+
+  # --- Peak finding ------------------------------------------------------
+  min_peaks: 10
+  max_peaks: 2048
+  npix_min: 2
+  npix_max: 30
+  amax_thr: 40.0
+  atot_thr: 180.0
+  son_min: 10.0
+  peak_rank: 3
+  r0: 3.0
+  dr: 2.0
+  nsigm: 10.0
+
+  # --- Mask --------------------------------------------------------------
+  use_zmq_mask: true           # use pixel-status mask from psana1 calib constants
+  # mask_file: null            # optional extra HDF5 mask on top
+
+  # --- DR / compression (all disabled for baseline run) ------------------
+  dr_method: null
+  compression: null
+
+...

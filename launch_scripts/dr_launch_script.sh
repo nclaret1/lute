@@ -4,7 +4,8 @@ set -euo pipefail
 trap 'echo "FAILED at line $LINENO: $BASH_COMMAND" >&2' ERR
 
 set +u
-source /sdf/group/lcls/ds/ana/sw/conda1/rel/ami_current/setup_env_lcls1.sh
+source /sdf/group/lcls/ds/ana/sw/conda1/manage/bin/psconda.sh
+source /sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute/install/bin/activate_installation
 set -u
 
 export PYTHONPATH="/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/decompy/src:${PYTHONPATH:-}"
@@ -19,7 +20,8 @@ RUNS_TO_PROCESS=({16..17})
 
 # List DR methods to run. Must match make_yaml_from_template.sh "METHODS" names.
 #wavelet_mkt
-DR_METHODS=( baseline wavelet_quant_zerotree_compress )
+DR_METHODS=( wavelet_dionisio  )
+#wavelet_dionisio
 INCLUDE_S="${INCLUDE_S:-0}"
 
 COMPONENTS=(X_hat)
@@ -62,10 +64,11 @@ TASK_NAME6="HKLComparer"
 # Paths
 # =========================
 MAKE_YAML_SCRIPT="/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute/config/dr_pyalgos_sfx/make_yaml_from_template.sh"
-SUBMIT_SCRIPT="/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute/launch_scripts/submit_slurm.sh"
+#SUBMIT_SCRIPT="/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute/launch_scripts/submit_slurm.sh"
+SUBMIT_SCRIPT="submit_slurm"
 
 CONFIG_DIR="/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute/config/_auto"
-LUTE_OUTPUT_DIR="/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/Wavelet/test/"
+LUTE_OUTPUT_DIR="/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/Wavelet/test_dionisio_peakfind/"
 mkdir -p "${CONFIG_DIR}" "${LUTE_OUTPUT_DIR}"
 
 GEOM_FILE="/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/geom/r0016.geom"
@@ -288,7 +291,7 @@ if (( DO_BASELINE == 1 )); then
 
   echo ">>> GLOBAL baseline: concat"
   concat_id="$(submit_task_get_jobid \
-  "${SUBMIT_SCRIPT}" -t "${TASK_NAME3}" -c "${rsplit_yaml}"  \
+  "${SUBMIT_SCRIPT}" -t "${TASK_NAME3}" -c "${rsplit_yaml}" -e "${EXPERIMENT}" -r 0 \
     $(sbatch_layout "${STREAMCAT_NTASKS}") "$(export_nprocs_flag "${STREAMCAT_NTASKS}")" \
     "${global_mkdir_dep[@]}" \
     "${SBATCH_INVARIANT_ARGS[@]}")"
@@ -296,23 +299,24 @@ if (( DO_BASELINE == 1 )); then
   echo ">>> GLOBAL baseline: merge (after ${concat_id})"
   depc=(--dependency=${DEP_POLICY}:${concat_id})
   merge_id="$(submit_task_get_jobid \
-  "${SUBMIT_SCRIPT}" -t "${TASK_NAME5}" -c "${rsplit_yaml}" \
+  "${SUBMIT_SCRIPT}" -t "${TASK_NAME5}" -c "${rsplit_yaml}" -e "${EXPERIMENT}" -r 0 \
     $(sbatch_layout "${MERGE_NTASKS}") "$(export_nprocs_flag "${MERGE_NTASKS}")" \
     "${global_mkdir_dep[@]}" "${depc[@]}" \
     "${SBATCH_INVARIANT_ARGS[@]}")"
 
   MERGE_JOB_BY_PAIR["${key}"]="${merge_id}"
+  echo "Merge submitted: ${merge_id}"
 
   echo ">>> GLOBAL baseline: self-compare after ${merge_id}"
   depm=(--dependency=${DEP_POLICY}:${merge_id})
-  "${SUBMIT_SCRIPT}" -t "${TASK_NAME6}" -c "${rsplit_yaml}" \
+  "${SUBMIT_SCRIPT}" -t "${TASK_NAME6}" -c "${rsplit_yaml}" -e "${EXPERIMENT}" -r 0 \
     $(sbatch_layout 10) "$(export_nprocs_flag 10)" \
     "${global_mkdir_dep[@]}" "${depm[@]}" \
     "${SBATCH_INVARIANT_ARGS[@]}"
 
 
   if [[ -f "${ccstar_yaml}" ]]; then
-    "${SUBMIT_SCRIPT}" -t "${TASK_NAME6}" -c "${ccstar_yaml}" \
+    "${SUBMIT_SCRIPT}" -t "${TASK_NAME6}" -c "${ccstar_yaml}" -e "${EXPERIMENT}" -r 0 \
     $(sbatch_layout 10) "$(export_nprocs_flag 10)" \
     "${global_mkdir_dep[@]}" "${depm[@]}" \
     "${SBATCH_INVARIANT_ARGS[@]}"
@@ -412,7 +416,7 @@ for method in "${DR_METHODS_NO_BASELINE[@]}"; do
 
     echo ">>> GLOBAL ${method}/${comp}: concat"
     concat_id="$(submit_task_get_jobid \
-      "${SUBMIT_SCRIPT}" -t "${TASK_NAME3}" -c "${rsplit_yaml}"\
+      "${SUBMIT_SCRIPT}" -t "${TASK_NAME3}" -c "${rsplit_yaml}" -e "${EXPERIMENT}" -r 0 \
       $(sbatch_layout "${STREAMCAT_NTASKS}") "$(export_nprocs_flag "${STREAMCAT_NTASKS}")" \
       "${global_mkdir_dep[@]}" \
       "${SBATCH_INVARIANT_ARGS[@]}")"
@@ -421,22 +425,23 @@ for method in "${DR_METHODS_NO_BASELINE[@]}"; do
     echo ">>> GLOBAL ${method}/${comp}: merge (after ${concat_id})"
     depc=(--dependency=${DEP_POLICY}:${concat_id})
     merge_id="$(submit_task_get_jobid \
-      "${SUBMIT_SCRIPT}" -t "${TASK_NAME5}" -c "${rsplit_yaml}" \
+      "${SUBMIT_SCRIPT}" -t "${TASK_NAME5}" -c "${rsplit_yaml}" -e "${EXPERIMENT}" -r 0 \
       $(sbatch_layout "${MERGE_NTASKS}") "$(export_nprocs_flag "${MERGE_NTASKS}")" \
       "${global_mkdir_dep[@]}" "${depc[@]}" \
       "${SBATCH_INVARIANT_ARGS[@]}")"
 
     MERGE_JOB_BY_PAIR["${method}|${comp}"]="${merge_id}"
+    echo "Merge submitted: ${merge_id}"
 
     echo ">>> GLOBAL ${method}/${comp}: self-compare after ${merge_id}"
     depm=(--dependency=${DEP_POLICY}:${merge_id})
-    "${SUBMIT_SCRIPT}" -t "${TASK_NAME6}" -c "${rsplit_yaml}" \
+    "${SUBMIT_SCRIPT}" -t "${TASK_NAME6}" -c "${rsplit_yaml}" -e "${EXPERIMENT}" -r 0 \
       $(sbatch_layout 10) "$(export_nprocs_flag 10)" \
       "${global_mkdir_dep[@]}" "${depm[@]}" \
       "${SBATCH_INVARIANT_ARGS[@]}"
 
     if [[ -f "${ccstar_yaml}" ]]; then
-      "${SUBMIT_SCRIPT}" -t "${TASK_NAME6}" -c "${ccstar_yaml}" \
+      "${SUBMIT_SCRIPT}" -t "${TASK_NAME6}" -c "${ccstar_yaml}" -e "${EXPERIMENT}" -r 0 \
         $(sbatch_layout 10) "$(export_nprocs_flag 10)" \
         "${global_mkdir_dep[@]}" "${depm[@]}" \
         "${SBATCH_INVARIANT_ARGS[@]}"
@@ -464,6 +469,13 @@ if (( DO_BASELINE == 1 )); then
     method="${key%%|*}"
     comp="${key##*|}"
 
+    echo "DEBUG cross-compare: key=${key} baseline_merge=${baseline_merge} algo_merge_id=${algo_merge_id}"
+
+    if [[ -z "${algo_merge_id}" || ! "${algo_merge_id}" =~ ^[0-9]+$ ]]; then
+      echo "WARN: Invalid algo_merge_id='${algo_merge_id}' for ${method}/${comp}, skipping cross-compare" >&2
+      continue
+    fi
+
     algo_workdir="$(algo_out_dir "${method}" "${comp}")"
     algo_hkl2="${algo_workdir}/merged.hkl2"
 
@@ -478,9 +490,10 @@ if (( DO_BASELINE == 1 )); then
     mkdir_id="$(submit_mkdir_job "${cmp_dir}" "cmp_baseline_vs_${method}_${comp}")"
     mkdir_dep=(--dependency=${DEP_POLICY}:${mkdir_id})
 
-    if [[ -n "${baseline_merge}" ]]; then
+    if [[ -n "${baseline_merge}" && "${baseline_merge}" =~ ^[0-9]+$ ]]; then
       cmp_dep=(--dependency=${DEP_POLICY}:${baseline_merge}:${algo_merge_id})
     else
+      echo "WARN: baseline_merge='${baseline_merge}' invalid or empty, depending only on algo_merge_id" >&2
       cmp_dep=(--dependency=${DEP_POLICY}:${algo_merge_id})
     fi
 
@@ -495,7 +508,7 @@ if (( DO_BASELINE == 1 )); then
     echo ">>> COMPARE baseline vs ${method}/${comp}"
 
     cmp_job_id="$(submit_task_get_jobid \
-      "${SUBMIT_SCRIPT}" -t "${TASK_NAME6}" -c "${cmp_yaml}" \
+      "${SUBMIT_SCRIPT}" -t "${TASK_NAME6}" -c "${cmp_yaml}" -e "${EXPERIMENT}" -r 0 \
       $(sbatch_layout 10) "$(export_nprocs_flag 10)" \
       "${mkdir_dep[@]}" "${cmp_dep[@]}" \
       "${SBATCH_INVARIANT_ARGS[@]}")"
@@ -510,7 +523,7 @@ if (( DO_BASELINE == 1 )); then
       sed -i -E "s|^([[:space:]]*in_files:).*|\1 \"${baseline_hkl1} ${algo_hkl2}\"|" "${cmp_yaml}"
 
       cmp_job_id="$(submit_task_get_jobid \
-        "${SUBMIT_SCRIPT}" -t "${TASK_NAME6}" -c "${cmp_yaml}" \
+        "${SUBMIT_SCRIPT}" -t "${TASK_NAME6}" -c "${cmp_yaml}" -e "${EXPERIMENT}" -r 0 \
         $(sbatch_layout 10) "$(export_nprocs_flag 10)" \
         "${mkdir_dep[@]}" "${cmp_dep[@]}" \
         "${SBATCH_INVARIANT_ARGS[@]}")"

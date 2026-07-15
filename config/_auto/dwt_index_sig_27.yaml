@@ -1,0 +1,34 @@
+%YAML 1.3
+---
+title: "DWT indexed sweep — sig_27"
+experiment: "mfxx49820"
+run: "16"
+run_pad: "0016"
+date: "2025/10/15"
+lute_version: 0.1
+task_timeout: 259200
+
+work_dir: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/Wavelet/dionisio_DWT_peakfinding/dwt_indexed/sig_threshold_sweep/sig_thr_27/r0016"
+...
+---
+detector: "epix10k2M"
+out_root:  "{{ work_dir }}"
+pv_camera_length: "MFX:ROB:CONT:POS:Z"
+event_receiver: "evr0"
+geom_file: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/geom/r0016.geom"
+
+IndexCrystFEL:
+  in_file: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/Wavelet/dionisio_DWT_peakfinding/dwt_indexed/sig_threshold_sweep/sig_thr_27/r0016/input.list"
+  executable: "/sdf/group/lcls/ds/tools/crystfel/0.10.2/bin/indexamajig"
+  out_file: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/Wavelet/dionisio_DWT_peakfinding/dwt_indexed/sig_threshold_sweep/sig_thr_27/r0016/stream_16.stream"
+  geometry: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/geom/r0016.geom"
+  no_revalidate: True
+  multi: True
+  indexing: "mosflm,xds"
+  int_radius: "3,4,5"
+  profile: True
+  peaks: "cxi"
+  tolerance: "5,5,5,1.5"
+  cell_file: "/sdf/data/lcls/ds/mfx/mfxx49820/results/btx_pypca/cell/reference.cell"
+
+...

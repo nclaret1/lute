@@ -37,3 +37,12 @@ indexamajig.*/
 .ipynb_checkpoints/
 **/.ipynb_checkpoints/
 
+# Build dependencies (downloaded by Meson)
+subprojects/
+
+# Compiled libpressio bindings
+libpressio_env/
+
+# Large binary data files
+*.bin
+

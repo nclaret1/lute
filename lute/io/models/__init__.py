@@ -4,6 +4,7 @@
 
 from .base import *
 from .sfx_find_peaks import *
+from .sfx_find_peaks_local import *
 from .sfx_index import *
 from .sfx_merge import *
 from .sfx_solve import *
@@ -15,4 +16,6 @@ from .nexus import *
 from .xtc import *
 from .cheetah import *
 from .sfx_dr_find_peaks import *
+from .sfx_stream_find_peaks import *
+from .sfx_dr_find_peaks_zmq import *
 from .bayfai import *

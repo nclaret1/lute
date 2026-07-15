@@ -1,0 +1,43 @@
+%YAML 1.3
+---
+# ========= HEADER (global) =========
+title: "SFX: Peakfinder8 on local nanoBragg simulation images"
+experiment: "sim"
+run: "30"
+date: "2026/06/11"
+lute_version: 0.1
+task_timeout: 259200
+
+work_dir: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/sfx_local/run_030/"
+...
+---
+input_dir: "/sdf/data/lcls/ds/prj/prjaureis25/results/sim_data/nanobragg_sim_data/images/photosystem_ii_1S5L_run_030"
+out_root: "{{ work_dir }}"
+
+FindPeaksSFXLocal:
+  # --- Input ---
+  input_dir: "{{ input_dir }}"
+  file_pattern: "frame_*.h5"
+
+  # --- Output naming ---
+  exp_label: "sim"
+  run_label: 30
+  outdir: "{{ out_root }}"
+
+  # --- Event selection ---
+  n_events: 0        # 0 = all frames
+
+  # --- Peakfinder8 parameters ---
+  min_peaks: 10
+  max_peaks: 2048
+  npix_min: 2
+  npix_max: 30
+  amax_thr: 80.0
+  son_min: 7.0
+  r0: 3.0
+
+  # --- Optional ---
+  mask_file: ~        # null = no custom mask
+  make_powder_plots: true
+
+...

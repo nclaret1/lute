@@ -169,44 +169,55 @@ class DrFindPeaksPyAlgosParameters(TaskParameters):
         description="Determine further quantization scale.",
     )
 
-    dr_method: Optional[
-        Literal[
-            "wavelet_quant_zerotree_compress",
-            "wavelet_dionisio",
-            "wavelet_spiht",
-            "wavelet_bishrink_zerotree_compress",
-            "wavelet_bishrink_rpca",
-            "wavelet_sure_shrink",
-            "wavelet_simple_shrink",
-            "wavelet_hmt_shrink",
-            "wavelet_bivariate_shrink",
-            "wavelet_bayes_shrink",
-            "stable_pcp",
-            "tv_rpca",
-            "tv_reg_rpca",
-            "tv_reg_svd_rpca",
-            "rpca_altproj",
-            "rpca_altproj_thresh",
-            "median_bg",
-            "morph_open",
-            "pysz_codec",
-            "rsvd_density_power",
-            "wavelet_mkt",
-        ]
-    ] = Field(
+    dr_method: Optional[Literal["wavelet_quant_zerotree_compress",
+                                "wavelet_dionisio", "wavelet_spiht",
+                                "wavelet_bishrink_zerotree_compress",
+                                "wavelet_bishrink_rpca","wavelet_sure_shrink",
+                                "wavelet_simple_shrink", "wavelet_hmt_shrink",
+                                "wavelet_bivariate_shrink", "wavelet_bayes_shrink",
+                                "stable_pcp", "tv_rpca",
+                                "tv_reg_rpca", "tv_reg_svd_rpca",
+                                "rpca_altproj", "rpca_altproj_thresh",
+                                "median_bg", "morph_open", "pysz_codec",
+                                "rsvd_density_power", "wavelet_mkt",
+                                "libpressio_sz3", "libpressio_qoz"]] = Field(
         None,
         description="For DrAlgo: reduction method to use. None disables DR.",
     )
+    
 
     abs_error: float = Field(
         1e-3,
         description="Absolute error bound for SZ compression (if enabled).",
     )
 
+    use_dwt_sig_factor: bool = Field(
+        False,
+        description="Whether to use DWT signal factor for peak finding.",
+    )
+
+    use_dwt_abs_thr: bool = Field(
+        False,
+        description="Whether to use DWT absolute threshold for peak finding.",
+    )
+
+    dwt_peak_find_abs_thr: Optional[float] = Field(
+        None,
+        description="Absolute threshold for DWT peak finding.",
+    )
+
+    dwt_peak_find_sig_factor: Optional[float] = Field(
+        None,
+        description="Standard deviation factor for DWT peak finding.",
+    )
+
     sz_algo: Literal["INTERP_LORENZO", "INTERP", "LORENZO_REG", "LOSSLESS"] = Field(
         "INTERP_LORENZO",
         description="SZ compression algorithm to use (if enabled).",
     )
+
+
+
 
     @validator("out_file", always=True)
     def validate_out_file(cls, out_file: str, values: Dict[str, Any]) -> str:

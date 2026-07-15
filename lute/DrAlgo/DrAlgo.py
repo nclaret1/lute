@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional, List
 import numpy as np
 import numpy.typing as npt
 from scipy.linalg import pinv, norm
+from scipy.ndimage import gaussian_filter
 from typing import Tuple
 from scipy import sparse
 
@@ -42,6 +43,9 @@ class DrAlgo(ABC):
         random_state: Optional[int] = None,
         tol: float = 1e-5,
         max_iter: int = 1000,
+        preprocess_nan: bool = True,
+        nan_sigma: float = 1.0,
+        nan_confidence_threshold: float = 0.1,
     ):
         self.n_components = n_components
         self.center = center
@@ -50,6 +54,9 @@ class DrAlgo(ABC):
         self.random_state = random_state
         self.tol = tol
         self.max_iter = max_iter
+        self.preprocess_nan = preprocess_nan
+        self.nan_sigma = nan_sigma
+        self.nan_confidence_threshold = nan_confidence_threshold
         self.mean_: Optional[npt.NDArray] = None
         self.errors_: List[float] = []
         self.timers_: List[float] = []
@@ -59,11 +66,68 @@ class DrAlgo(ABC):
         self._Xc_: Optional[npt.NDArray] = None
         self._X_orig_: Optional[np.ndarray] = None
 
-    # can actually use "DrAlgo" for forward reference
+    # Rows and columns of the 2-pixel-wide cross between epix10ka ASICs
+    # (panel shape 352x384, 0-indexed)
+    _EPIX10KA_CROSS_ROWS: tuple = (175, 176)
+    _EPIX10KA_CROSS_COLS: tuple = (191, 192)
+
+    @staticmethod
+    def build_epix10ka_cross_mask(shape: tuple) -> npt.NDArray:
+        """Return a boolean mask (True = valid) that excludes the epix10ka ASIC cross."""
+        M = np.ones(shape, dtype=bool)
+        for r in DrAlgo._EPIX10KA_CROSS_ROWS:
+            M[r, :] = False
+        for c in DrAlgo._EPIX10KA_CROSS_COLS:
+            M[:, c] = False
+        return M
+
+    @staticmethod
+    def normalized_convolution(
+        X: npt.NDArray,
+        sigma: float = 1.0,
+        confidence_threshold: float = 0.1,
+        mask: Optional[npt.NDArray] = None,
+    ) -> npt.NDArray:
+        """Mask-aware normalized Gaussian convolution (Adi Natan's approach).
+
+        Blurs data and support mask separately then divides, so invalid pixels
+        (NaN or explicitly masked, e.g. the bright cross between epix10ka ASICs)
+        are replaced by a locally-weighted average of their valid neighbors.
+
+        Args:
+            X: 2-D input array.
+            sigma: Gaussian blur radius in pixels.
+            confidence_threshold: pixels where Gaussian support < this value
+                fall back to the zero-filled value.
+            mask: boolean array (True = valid).  If None, np.isfinite(X) is used.
+        """
+        if mask is None:
+            M = np.isfinite(X).astype(np.float64)
+        else:
+            M = mask.astype(np.float64)
+        X_filled = np.where(M.astype(bool), X, 0.0)
+        num = gaussian_filter(X_filled.astype(np.float64), sigma=sigma)
+        den = gaussian_filter(M, sigma=sigma)
+        result = np.where(den >= confidence_threshold, num / np.maximum(den, 1e-8), X_filled)
+        return result.astype(X.dtype)
+
+    def _build_preprocess_mask(self, X: npt.NDArray) -> npt.NDArray:
+        """Combine finite-pixel mask with epix10ka cross mask when shape matches."""
+        M = np.isfinite(X)
+        if X.shape == (352, 384):
+            M &= self.build_epix10ka_cross_mask(X.shape)
+        return M
+
+    #can actually use "DrAlgo" for forward reference
     def fit(self, X: npt.ArrayLike, y: Any = None, **kwargs: Any) -> "DrAlgo":
         storage_ref = kwargs.pop("storage_ref", None)
 
         X = _check_2d(X)
+        if self.preprocess_nan:
+            M = self._build_preprocess_mask(X)
+            if not M.all():
+                X_inpainted = self.normalized_convolution(X, self.nan_sigma, self.nan_confidence_threshold, mask=M)
+                X = np.where(M, X, X_inpainted)  # only replace invalid pixels (cross + NaN)
         self.factors_ = {}
         self.errors_ = []
         self.final_error_ = None
@@ -161,6 +225,9 @@ class DrAlgo(ABC):
             "random_state": getattr(self, "random_state", None),
             "tol": getattr(self, "tol", None),
             "max_iter": getattr(self, "max_iter", None),
+            "preprocess_nan": getattr(self, "preprocess_nan", True),
+            "nan_sigma": getattr(self, "nan_sigma", 1.0),
+            "nan_confidence_threshold": getattr(self, "nan_confidence_threshold", 0.1),
             "gamma": getattr(self, "gamma", None),
             "beta": getattr(self, "beta", None),
             "size": getattr(self, "size", None),

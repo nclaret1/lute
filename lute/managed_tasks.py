@@ -190,6 +190,13 @@ DimpleSolver.add_tasklet(
 PeakFinderSFX: MPIExecutor = MPIExecutor("FindPeaksSFX")
 """Performs Bragg peak finding using the PyAlgos or Peakfinder8 algorithm."""
 
+PeakFinderSFXLocal: MPIExecutor = MPIExecutor("FindPeaksSFXLocal")
+"""Peakfinder8 peak finding on local simulation HDF5 files (no psana required)."""
+PeakFinderSFXLocal.shell_source(
+    "/sdf/group/lcls/ds/ana/sw/conda2/manage/bin/psconda.sh"
+)
+
+
 PeakFinderSFXXpp: MPIExecutor = MPIExecutor("FindPeaksSFX")
 """Performs Bragg peak finding using the PyAlgos or Peakfinder8 algorithm."""
 PeakFinderSFXXpp.shell_source(
@@ -204,6 +211,35 @@ PeakFinderSFXXppGpu.shell_source(
 
 DrPeakFinderPyAlgos: MPIExecutor = MPIExecutor("DrFindPeaksPyAlgos")
 """Perform Dr and compare Bragg peak finding using the PyAlgos algorithm."""
+
+StreamPeakFinderPyAlgos: Executor = Executor("StreamFindPeaksPyAlgos")
+"""Stream calibrated data from XTC1 via ZMQ and run PyAlgos peak finding.
+
+Runs in psana2 env so SZ/QoZ compression via libpressio is available.
+No intermediate XTC2 file is written.
+"""
+StreamPeakFinderPyAlgos.shell_source(
+    "/sdf/group/lcls/ds/ana/sw/conda2/manage/bin/psconda.sh"
+)
+
+SfxDrZmqPeakFinder: MPIExecutor = MPIExecutor("SfxDrFindPeaksZmq")
+"""Identical DR + PyAlgos peak-finding logic as DrFindPeaksPyAlgos, but reads
+XTC1 data via a ZMQ-streaming psana1 subprocess so the task can run in a
+psana2 environment.  Enables SZ/QoZ compression without an intermediate XTC2
+file.
+"""
+SfxDrZmqPeakFinder.shell_source(
+    "/sdf/group/lcls/ds/ana/sw/conda2/manage/bin/psconda.sh"
+)
+_PS461 = "/sdf/group/lcls/ds/ana/sw/conda2/inst/envs/ps-4.6.1"
+_LIBPRESSIO_ENV = "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute/libpressio_env"
+SfxDrZmqPeakFinder.update_environment(
+    {
+        "PYTHONPATH": _LIBPRESSIO_ENV,
+        "LD_LIBRARY_PATH": f"{_PS461}/lib",
+    },
+    update_path="append",
+)
 
 SHELXCRunner: Executor = Executor("RunSHELXC")
 """Runs CCP4 SHELXC - needed for crystallographic phasing."""

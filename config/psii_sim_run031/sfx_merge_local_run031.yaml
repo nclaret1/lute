@@ -1,0 +1,23 @@
+%YAML 1.3
+---
+title: "SFX: partialator merging of nanoBragg PSII simulation"
+experiment: "sim"
+run: "31"
+date: "2026/06/11"
+lute_version: 0.1
+task_timeout: 259200
+
+work_dir: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/sfx_local/run_031/"
+...
+---
+MergePartialator:
+  in_file: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/sfx_local/run_031/sim_r0031.stream"
+  out_file: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/sfx_local/run_031/sim_r0031.hkl"
+
+  symmetry: "mmm"       # Laue group for P 21 21 21
+  model: "unity"        # no partiality correction (appropriate for simulation)
+  niter: 3              # cycles of scaling + post-refinement
+
+  min_measurements: 2   # reflection must appear >=2 times to be included
+
+...

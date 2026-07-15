@@ -3,13 +3,13 @@
 # ========= HEADER (global) =========
 title: "SFX: Pipeline for Dr + PeakFinding"
 experiment: "mfxx49820"
-run: "17"
-run_pad: "0017" 
+run: "29"
+run_pad: "0029" 
 date: "2025/10/15"
 lute_version: 0.1
 task_timeout: 259200
 
-work_dir: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/Wavelet/level_5/wavelet_dionisio/X_hat/r0017/"
+work_dir: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/Wavelet/test_dionisio_peakfind//wavelet_dionisio/X_hat/r0017/"
 ...
 ---
 detector: "epix10k2M"                  

@@ -9,7 +9,7 @@ lute_version: 0.1
 task_timeout: 259200
 dr_method: "wavelet_quant_zerotree_compress"
 dr_component: "X_hat"
-work_dir: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/Wavelet/baseline"
+work_dir: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/DemoLuteWorkflows/wavelet_quant_zerotree_compress/r0016"
 ...
 
 ---

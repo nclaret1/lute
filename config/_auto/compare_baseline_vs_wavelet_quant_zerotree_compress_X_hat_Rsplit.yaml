@@ -9,7 +9,7 @@ lute_version: 0.1
 task_timeout: 259200
 dr_method: "wavelet_quant_zerotree_compress"
 dr_component: "X_hat"
-work_dir: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/Wavelet/test//compare_baseline_vs_wavelet_quant_zerotree_compress/X_hat/"
+work_dir: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/Wavelet/test2//compare_baseline_vs_wavelet_quant_zerotree_compress/X_hat/"
 ...
 
 ---
@@ -34,7 +34,7 @@ MergePartialator:
   niter: 1
 
 CompareHKL:
-  in_files: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/Wavelet/test//baseline/merged.hkl1 /sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/Wavelet/test//wavelet_quant_zerotree_compress/X_hat/merged.hkl2"
+  in_files: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/Wavelet/test2//baseline/merged.hkl1 /sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/Wavelet/test2//wavelet_quant_zerotree_compress/X_hat/merged.hkl2"
   fom: "Rsplit"
   cell_file: "/sdf/data/lcls/ds/mfx/mfxx49820/results/btx_pypca/cell/reference.cell"
   symmetry: "4/mmm_uac"

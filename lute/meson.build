@@ -9,6 +9,7 @@ py3.install_sources(
     subdir: 'lute',
 )
 
+subdir('DrAlgo')
 subdir('execution')
 subdir('io')
 subdir('tasks')

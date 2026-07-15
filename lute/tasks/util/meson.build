@@ -3,6 +3,7 @@ py_sources = [
     'geometry.py',
     'html.py',
     '__init__.py',
+    'sfx_dr_zmq_push.py',
     'xtc_pull.py',
     'xtc_push.py',
 ]

@@ -1,0 +1,22 @@
+%YAML 1.3
+---
+title: "SFX: compare_hkl CC1/2 for nanoBragg PSII simulation"
+experiment: "sim"
+run: "31"
+date: "2026/06/11"
+lute_version: 0.1
+task_timeout: 259200
+
+work_dir: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/sfx_local/run_031/"
+...
+---
+CompareHKL:
+  in_files: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/sfx_local/run_031/sim_r0031.hkl1 /sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/sfx_local/run_031/sim_r0031.hkl2"
+  symmetry: "mmm"
+  cell_file: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute/config/psii_1S5L.cell"
+  fom: "CC"
+  nshells: 20
+  shell_file: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/sfx_local/run_031/CC_shells.dat"
+  ignore_negs: false
+
+...

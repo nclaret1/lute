@@ -9,7 +9,7 @@ lute_version: 0.1
 task_timeout: 259200
 dr_method: null
 dr_component: null
-work_dir: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/Wavelet/test//baseline/"
+work_dir: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/Wavelet/test2//baseline/"
 ...
 
 ---

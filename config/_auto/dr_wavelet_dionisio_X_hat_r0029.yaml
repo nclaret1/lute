@@ -9,7 +9,7 @@ date: "2025/10/15"
 lute_version: 0.1
 task_timeout: 259200
 
-work_dir: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/Wavelet/level_5/wavelet_dionisio/X_hat/r0029/"
+work_dir: "/sdf/data/lcls/ds/mfx/mfxx49820/results/nclaret/lute_output/Wavelet/dionisio_DWT_peakfinding//wavelet_dionisio/X_hat/r0029/"
 ...
 ---
 detector: "epix10k2M"                  

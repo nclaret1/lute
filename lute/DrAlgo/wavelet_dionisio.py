@@ -11,6 +11,91 @@ import pywt
 from .DrAlgo import XhatDrAlgo, Factors, _fro_norm
 
 
+def DWT_peak_finder(
+    img: np.ndarray,
+    n_sigma: float = 3.0,
+    abs_thr: Optional[float] = None,
+    wavelet: str = "haar",
+) -> np.ndarray:
+    """Find peaks using connected-component labeling on a thresholded DWT image.
+
+    The threshold is computed per-panel as n_sigma * sigma, where sigma is
+    estimated from the finest HH detail sub-band via MAD: sigma = median(|HH1|) / 0.6745.
+
+    Args:
+        img: 3D array (n_panels, rows, cols) or 2D (rows, cols).
+        n_sigma: Sigma multiplier for the per-panel MAD threshold (default 3.0).
+        wavelet: Wavelet to use for the single-level DWT noise estimate (default 'haar').
+
+    Returns:
+        peaks: (n_peaks, 14) float64 array with columns matching the PyAlgos
+               peak_finder_v3r3 layout:
+               0=panel, 1=row_int, 2=col_int, 4=max_intensity,
+               5=total_intensity, 6=rcent, 7=ccent,
+               10=rmin, 11=rmax, 12=cmin, 13=cmax.
+    """
+    from scipy.ndimage import label as nd_label, center_of_mass
+
+    if img.ndim == 2:
+        img = img[np.newaxis, :, :]
+
+    n_panels, H, W = img.shape
+    all_peaks: List[np.ndarray] = []
+
+    for panel_idx in range(n_panels):
+        rec_img = img[panel_idx]
+
+        if abs_thr is None:
+            _, (_, _, HH1) = pywt.dwt2(rec_img, wavelet=wavelet)
+            thr = float(n_sigma) * _mad_sigma(HH1)
+        else:
+            thr = float(abs_thr)
+
+        diff_rec = rec_img > thr
+        labeled, n = nd_label(diff_rec)
+
+        if n == 0 or n > 50000:
+            continue
+
+        idx = np.arange(1, n + 1)
+        coms = center_of_mass(diff_rec, labeled, idx)
+
+        for label_id, com in zip(idx, coms):
+            row_c, col_c = float(com[0]), float(com[1])
+            region_rows, region_cols = np.where(labeled == label_id)
+
+            rmin = int(region_rows.min())
+            rmax = int(region_rows.max())
+            cmin = int(region_cols.min())
+            cmax = int(region_cols.max())
+
+            row_int = max(0, min(H - 1, int(round(row_c))))
+            col_int = max(0, min(W - 1, int(round(col_c))))
+
+            region_vals = rec_img[region_rows, region_cols]
+            max_intensity = float(region_vals.max())
+            total_intensity = float(region_vals.sum())
+
+            peak = np.zeros(14, dtype=np.float64)
+            peak[0] = panel_idx
+            peak[1] = row_int
+            peak[2] = col_int
+            peak[4] = max_intensity
+            peak[5] = total_intensity
+            peak[6] = row_c
+            peak[7] = col_c
+            peak[10] = rmin
+            peak[11] = rmax
+            peak[12] = cmin
+            peak[13] = cmax
+            all_peaks.append(peak)
+
+    if not all_peaks:
+        return np.empty((0, 14), dtype=np.float64)
+
+    return np.array(all_peaks, dtype=np.float64)
+
+
 def _zlib_size_bytes(arr: np.ndarray, level: int = 6) -> int:
     b = np.ascontiguousarray(arr).tobytes()
     return len(zlib.compress(b, level))
